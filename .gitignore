@@ -10,4 +10,4 @@ addon/doc/en/
 .sconsign.dblite
 *.dll
 
-addon/globalPlugins/dotPad/SDK/
+addon/globalPlugins/tactileScreen/SDK/
