@@ -129,9 +129,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	_is_white_on_black = False
 
-	_configName = 'addon_dotPad'
+	_configName = 'tactileScreen'
 	_configSpec = {
-		'port': 'string(default="")',
+		'device': 'string(default="")',
 	}
 
 	def __init__(self):
@@ -154,6 +154,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 		self._isTerminating = False
 		self._refreshPending = False
+
+		if self._client is not None:
+			stored_device = config.conf[self._configName]["device"]
+			if stored_device:
+				self._autoConnectDevice = stored_device
+				self._client.start_ble_scan()
+			else:
+				self._autoConnectDevice = ""
 
 
 	def terminate(self) -> None:
@@ -201,9 +209,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._on_usb_port_found
 			)
 			self._client.on_key_pressed = (self._on_key_pressed)
-			#tmp self._client.on_message_received = (
-			#	self._on_message_received
-			#)
+			self._client.on_message_received = (
+				self._on_message_received
+			)
 			#tmp self._client.on_display_completed = (
 			#	self._on_display_completed
 			#)
@@ -257,7 +265,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		return self._client
 
 
-#ottmar
+
 	# ------------------------------------------------------------------
 	# SDK event handlers
 	# ------------------------------------------------------------------
@@ -266,6 +274,44 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		log.info("DotPad BLE device found: %r", device_name)
 		if self._deviceDialog is not None:
 			self._deviceDialog.add_device(device_name)
+
+		# Automatic connection.
+		if (
+			self._autoConnectDevice
+			and device_name == self._autoConnectDevice
+			):
+			wanted_device = self._autoConnectDevice
+
+			# Clear it immediately so repeated scan callbacks don't initiate
+			# multiple connection attempts.
+			self._autoConnectDevice = ""
+
+			try:
+				self._client.stop_ble_scan()
+				handle = self._client.connect_ble(wanted_device)
+
+				if not handle:
+					log.warning(
+						"Automatic connection to %r could not be started",
+						wanted_device,
+						)
+					return
+
+				self._pending_device_handle = handle
+				self._pending_device_name = wanted_device
+
+				log.info(
+					"Automatic DotPad connection started: "
+					"name=%r, handle=0x%X",
+					wanted_device,
+					handle,
+					)
+
+			except Exception:
+				log.exception(
+					"Automatic connection to %r failed",
+					wanted_device,
+					)
 
 
 	def _on_usb_port_found(self, port_name: str) -> None:
@@ -314,9 +360,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		)
 		ui.message(f"Connecting to {device_name}")
 
-		#Ottmar
-		client.getDisplayInfo()
-		client.resetDataBuffer()
 		return True
 
 
@@ -473,6 +516,168 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 		self._handle_key_press(int(key_code))
 
+	def _on_message_received(
+		self,
+		device_handle: int,
+		message_code: DotDataCode | int,
+		message: str,
+		) -> None:
+		log.info("DotPad message: handle=0x%X, code=%r, message=%r",
+		device_handle,
+		message_code,
+		message,
+		)
+		
+		# Unknown future SDK message code.
+		if not isinstance(message_code, DotDataCode):
+			log.warning("Unknown DotPad message code %r from handle 0x%X",
+				message_code,
+				device_handle,
+				)
+			return
+
+		if message_code == DotDataCode.CONNECTED:
+			self._device_handle = device_handle
+			
+			if device_handle == self._pending_device_handle:
+				self._connected_device_name = self._pending_device_name
+			self._pending_device_handle = 0
+			self._pending_device_name = ""
+
+			config.conf[self._configName]["device"] = self._connected_device_name
+
+			log.info("DotPad connected: handle=0x%X, name=%r",
+				device_handle,
+				self._connected_device_name,
+				)
+
+			ui.message(f"Connected to {self._connected_device_name}"
+				if self._connected_device_name
+				else "DotPad connected"
+				)
+
+			client = self._require_client()
+			client.get_display_info(self._device_handle)
+			client.resetDataBuffer()
+			client.reset_display(self._device_handle)
+			client.reset_braille_display(self._device_handle)
+		
+
+			# Ask the device for its authoritative name.
+			try:
+				if self._client is not None:
+					self._client.request_device_name(device_handle)
+			except Exception:
+				log.exception("Could not request DotPad device name")
+
+			# Optional information requests.
+			try:
+				if self._client is not None:
+					self._client.request_firmware_version(device_handle)
+					self._client.request_hardware_version(device_handle)
+			except Exception:
+				log.exception("Could not request DotPad version information")
+
+		elif message_code == DotDataCode.DISCONNECTED:
+			log.info("DotPad disconnected: handle=0x%X",
+				device_handle,
+				)
+
+			if device_handle == self._device_handle:
+				self._device_handle = 0
+				self._connected_device_name = ""
+
+			if device_handle == self._pending_device_handle:
+				self._pending_device_handle = 0
+				self._pending_device_name = ""
+
+			ui.message("DotPad disconnected")
+
+		elif message_code == DotDataCode.BOARD_INFO:
+			# Your earlier logs showed this can contain binary-looking data,
+			# so don't treat it as normal user-facing text.
+			log.info(
+				"DotPad board info: handle=0x%X, data=%r",
+				device_handle,
+				message,
+				)
+
+		elif message_code == DotDataCode.BLE_MAC_ADDRESS:
+			log.info(
+				"DotPad BLE MAC address: handle=0x%X, address=%r",
+				device_handle,
+				message,
+				)
+
+		elif message_code == DotDataCode.DEVICE_NAME:
+			device_name = message.strip()
+			if device_name:
+				self._connected_device_name = device_name
+				
+				
+				log.info(
+					"DotPad device name received and stored: %r",
+					device_name,
+					)
+			else:
+				log.warning(
+					"DotPad returned an empty device name for handle 0x%X",
+					device_handle,
+					)
+
+		elif message_code == DotDataCode.DEVICE_FW_VERSION:
+			log.info(
+				"DotPad firmware version: %r",
+				message,
+				)
+
+		elif message_code == DotDataCode.DEVICE_HW_VERSION:
+			log.info(
+				"DotPad hardware version: %r",
+				message,
+				)
+
+		elif message_code == DotDataCode.RESPONSE_DISPLAY_LINE_ACK:
+			log.debug(
+				"DotPad display ACK: handle=0x%X, line=%r",
+				device_handle,
+				message,
+				)
+
+		elif message_code == DotDataCode.RESPONSE_DISPLAY_LINE_NON_ACK:
+			log.warning(
+				"DotPad display NON-ACK: handle=0x%X, line=%r",
+				device_handle,
+				message,
+				)
+
+		elif message_code == DotDataCode.RESPONSE_DISPLAY_LINE_COMPLETE:
+			log.debug(
+				"DotPad display complete: handle=0x%X, line=%r",
+				device_handle,
+				message,
+				)
+
+		elif message_code == DotDataCode.COMMAND_ERROR:
+			log.error(
+				"DotPad command error: handle=0x%X, message=%r",
+				device_handle,
+				message,
+				)
+
+			if message:
+				ui.message(f"DotPad error: {message}")
+			else:
+				ui.message("DotPad command error")
+
+		elif message_code == DotDataCode.COMMAND_NONE:
+			log.debug(
+				"DotPad command-none message: handle=0x%X, message=%r",
+				device_handle,
+				message,
+				)
+
+
 	def _handle_key_press(self, keyCode):
 		display_index = wx.Display.GetFromPoint((self.curCenterX, self.curCenterY))
 		# Fallback to primary display
@@ -619,6 +824,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				if isRaised:
 					client.setDotInDataBuffer(x, y)
 		self.outputDataBuffer(client)
+
+		text = f"{self.curCenterX:<5d}{self.curCenterY:<5d}{self.curViewPortWidth:<5d}{self.curViewPortHeight:<5d}"
+		client.display_braille_ascii(
+			self._device_handle,
+			text,
+
+		)
 
 		
 

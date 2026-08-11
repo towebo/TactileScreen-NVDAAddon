@@ -267,6 +267,13 @@ class DotPadSdkClient:
 		if not success:
 			raise DotPadError("DOT_PAD_GET_DISPLAY_INFO failed")
 
+		self.hCellCount = width.value
+		self.vCellCount = height.value
+		#self.bCellCount 
+		
+		self.hPixelCount = self.hCellCount * self.cellWidth
+		self.vPixelCount = self.vCellCount * self.cellHeight
+
 		return DotPadDisplayInfo(
 			width=width.value,
 			height=height.value,
@@ -615,11 +622,6 @@ class DotPadSdkClient:
 		cellIndex = (vCellIndex * self.hCellCount) + hCellIndex
 		bit = (y % self.cellHeight) + ((x % self.cellWidth) * self.cellHeight)
 		self._data[cellIndex] = ord(self._data[cellIndex]) | 2**bit
-
-	def getDisplayInfo(self):
-		self.hCellCount, self.vCellCount, self.bCellCount = dotPadSdk.getDisplayInfo()
-		self.hPixelCount = self.hCellCount * self.cellWidth
-		self.vPixelCount = self.vCellCount * self.cellHeight
 
 
 __all__ = [
