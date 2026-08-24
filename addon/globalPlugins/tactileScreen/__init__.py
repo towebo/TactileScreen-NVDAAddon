@@ -1,6 +1,5 @@
-		# A part of the DotPad NVDA add-on.
-# A part of the DotPad NVDA add-on.
-# Copyright (C) 2022 NV Access Limited.
+		# A part of Tactile Screen add-on
+# Copyright (C) 2026 MAWINGU
 # this code is licensed under the GNU General Public License version 2.
 
 
@@ -27,7 +26,6 @@ from .DotPadSdkClient import (
 	DotPadSdkClient,
 )
 from .deviceDialog import DotPadDeviceDialog
-
 
 import globalPluginHandler
 import tones
@@ -57,58 +55,13 @@ def getMousePosition():
 	ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
 	return pt.x, pt.y
 
-class DotPadConnectionDialog(SettingsDialog):
-	title = "DotPad Connection"
 
-	def __init__(self, parent, globalPlugin):
-		self._globalPlugin = globalPlugin
-		super().__init__(parent)
-
-	def makeSettings(self,settingsSizer):
-		conf = config.conf[self._globalPlugin._configName]
-		settingsSizerHelper = guiHelper.BoxSizerHelper(self, sizer=settingsSizer)
-		curPort = conf['port']
-		self._possiblePorts = [x['port'] for x in hwPortUtils.listComPorts()]
-		self._possiblePorts.insert(0, "[Not set]")
-		if not curPort:
-			index = 0
-		else:
-			try:
-				index = self._possiblePorts.index(curPort)
-			except ValueError:
-				# Port no longer exists, but list it as missing
-				index = 1
-				self._possiblePorts.insert(index, f"{curPort} (missing)")
-		self.portList = settingsSizerHelper.addLabeledControl("Dot Pad COM port", wx.Choice, choices=self._possiblePorts)
-		self.portList.SetSelection(index)
-
-	def postInit(self):
-		self.portList.SetFocus()
-
-	def onOk(self, evt):
-		index = self.portList.GetSelection()
-		if index != 0:
-			port = self._possiblePorts[index].split(' ')[0]
-			try:
-				self._globalPlugin.initDotPad(port)
-			except (DotPadError, RuntimeError) as e:
-				gui.messageBox(f"{e}", "Error")
-				self.portList.SetFocus()
-				return
-		else:
-			self._globalPlugin.terminateDotPad()
-			port = ""
-		conf = config.conf[self._globalPlugin._configName]
-		conf['port'] = port
-		super().onOk(evt)
-
-
-REFRESH_INTERVAL_MS = 1000
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	curInstance = None
 
+	REFRESH_INTERVAL_MS = 1000
 	cur_display_width = 60
 	cur_display_height = 40
 	curCenterX = 0
@@ -132,6 +85,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	_configName = 'tactileScreen'
 	_configSpec = {
 		'device': 'string(default="")',
+		'auto-refresh-interval': 'int(default=1000)',
 	}
 
 	def __init__(self):
@@ -154,6 +108,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 		self._isTerminating = False
 		self._refreshPending = False
+
+
+		#tmp self.REFRESH_INTERVAL_MS = config.conf[self._configName]["auto-refresh-interval"]
 
 		if self._client is not None:
 			stored_device = config.conf[self._configName]["device"]
@@ -472,7 +429,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 		self._refreshPending = True
 		core.callLater(
-			REFRESH_INTERVAL_MS,
+			self.REFRESH_INTERVAL_MS,
 			self._onRefreshTimer,
 		)
 
@@ -557,7 +514,15 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				)
 
 			client = self._require_client()
-			client.get_display_info(self._device_handle)
+			display_info = client.get_display_info(self._device_handle)
+			self.cur_display_width = client.hPixelCount
+			self.cur_display_height = client.vPixelCount
+			# Set zoom to native resolution
+			self.curViewPortWidth  = self.cur_display_width
+			self.curViewPortHeight = self.cur_display_height
+			self.curStepX = self.curViewPortWidth // 3
+			self.curStepY = self.curViewPortHeight // 3
+
 			client.resetDataBuffer()
 			client.reset_display(self._device_handle)
 			client.reset_braille_display(self._device_handle)
@@ -596,11 +561,21 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		elif message_code == DotDataCode.BOARD_INFO:
 			# Your earlier logs showed this can contain binary-looking data,
 			# so don't treat it as normal user-facing text.
-			log.info(
-				"DotPad board info: handle=0x%X, data=%r",
-				device_handle,
-				message,
+			if message_ptr:
+				# Temporarily inspect the first few bytes.
+				raw = ctypes.string_at(message_ptr, 16)
+				self._log(
+					"BOARD_INFO raw bytes: "
+					f"{raw.hex(' ')}"
 				)
+			else:
+				self._log("BOARD_INFO: null pointer")
+
+			#log.info(
+			#	"DotPad board info: handle=0x%X, data=%r",
+			#	device_handle,
+			#	message,
+			#	)
 
 		elif message_code == DotDataCode.BLE_MAC_ADDRESS:
 			log.info(

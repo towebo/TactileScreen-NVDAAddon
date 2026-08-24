@@ -125,11 +125,11 @@ KeyCallback = ctypes.WINFUNCTYPE(
         ctypes.c_void_p,      # const char* message
 )
 
-MessageCallback = _CALLBACK(
+MessageCallback = ctypes.WINFUNCTYPE(
     None,
     ctypes.c_void_p,
     ctypes.c_int,
-    ctypes.c_char_p,
+    ctypes.c_void_p,
 )
 
 DisplayCallback = _CALLBACK(

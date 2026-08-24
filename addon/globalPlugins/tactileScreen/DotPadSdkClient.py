@@ -480,14 +480,20 @@ class DotPadSdkClient:
 		self,
 		device_handle: int | None,
 		message_code: int,
-		raw_message: bytes | None,
+		message_ptr: int | None,
 		) -> None:
 		try:
+			if message_ptr:
+				raw_message = ctypes.string_at(message_ptr)
+				message = _decode_message(raw_message)
+			else:
+				message = ""
+
 			self._dispatch(
 				self.on_message_received,
 				_handle_value(device_handle),
 				_safe_enum(DotDataCode, message_code),
-				_decode_message(raw_message),
+				_decode_message(message),
 				)
 		except Exception as error:
 			self._log(f"Message callback failed: {error!r}")
