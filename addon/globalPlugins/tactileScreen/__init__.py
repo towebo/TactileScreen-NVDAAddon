@@ -27,6 +27,8 @@ from .DotPadSdkClient import (
 )
 from .deviceDialog import DotPadDeviceDialog
 
+from .brailleUtils import translateTextToBraille
+
 import globalPluginHandler
 import tones
 import queueHandler
@@ -522,7 +524,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self.curViewPortHeight = self.cur_display_height
 			self.curStepX = self.curViewPortWidth // 3
 			self.curStepY = self.curViewPortHeight // 3
-
+			
 			client.resetDataBuffer()
 			client.reset_display(self._device_handle)
 			client.reset_braille_display(self._device_handle)
@@ -559,23 +561,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			ui.message("DotPad disconnected")
 
 		elif message_code == DotDataCode.BOARD_INFO:
-			# Your earlier logs showed this can contain binary-looking data,
-			# so don't treat it as normal user-facing text.
-			if message_ptr:
-				# Temporarily inspect the first few bytes.
-				raw = ctypes.string_at(message_ptr, 16)
-				self._log(
-					"BOARD_INFO raw bytes: "
-					f"{raw.hex(' ')}"
-				)
-			else:
-				self._log("BOARD_INFO: null pointer")
-
-			#log.info(
-			#	"DotPad board info: handle=0x%X, data=%r",
-			#	device_handle,
-			#	message,
-			#	)
+			pass
 
 		elif message_code == DotDataCode.BLE_MAC_ADDRESS:
 			log.info(
@@ -872,35 +858,16 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if client is None:
 			return
 
-		text = "Hello Lennie"
-
-		log.info(
-			"Calling display_braille: "
-			"handle=0x%X, text=%r, language=%d, grade=%d",
-			self._device_handle,
-			text,
-			int(DotPadLanguage.ENGLISH),
-			2,
-		)
+		text = "Tandkräm!"
 
 		try:
-			# Set the global SDK language as well, even though the display
-			# function also takes language and grade parameters.
-			client.set_language(
-				DotPadLanguage.ENGLISH,
-				grade=2,
-			)
-
-			success = client.display_braille(
+			success = client.display_braille_text(
 				self._device_handle,
 				text,
-				language=DotPadLanguage.ENGLISH,
-				grade=2,
-				english_grade_if_korean=2,
 			)
 
 			log.info(
-				"display_braille returned %s",
+				"display_braille_data returned %s",
 				success,
 			)
 
