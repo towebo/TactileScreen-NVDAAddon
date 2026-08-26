@@ -1,17 +1,13 @@
+		# A part of Tactile Screen add-on
+# Copyright (C) 2026 MAWINGU
+# this code is licensed under the GNU General Public License version 2.
+
 # dotpad_api.py
 #
 # Python ctypes wrapper for DotPad Windows SDK v3.
 #
 # Based on DotSDKAPI.h.
-#
-# This module has no NVDA-specific imports. It can be imported from an NVDA
-# global plugin or from a standalone Python program.
-#
-# Important:
-# - DotPadSDK.dll must match the architecture of the Python/NVDA process.
-# - SDK functions use cdecl.
-# - SDK callbacks use Windows CALLBACK (__stdcall).
-# - Keep the DotPadSdkClient instance alive while the SDK may invoke callbacks.
+
 
 from __future__ import annotations
 
@@ -37,11 +33,15 @@ from .dotPadSdk import (
 	KeyCallback,
 	MessageCallback,
 	DisplayCallback,
-	BrailleTranslateCallback,
 	_handle_value,
 	_as_void_p,
 	_decode_message,
 	_safe_enum,
+)
+from .brailleUtils import (
+	translateTextToBraille,
+	wrapBrailleCells,
+	drawBrailleCells,
 )
 
 class DotPadSdkClient:
@@ -56,7 +56,6 @@ class DotPadSdkClient:
 		)
 		on_message_received(device_handle, message_code, message)
 		on_display_completed(device_handle)
-		on_braille_translated(device_handle, translated_data)
 
 	The optional dispatch function is useful in NVDA:
 
@@ -105,7 +104,6 @@ class DotPadSdkClient:
 			Callable[[int, DotDataCode | int, str], None] | None
 			) = None
 		self.on_display_completed: Callable[[int], None] | None = None
-		self.on_braille_translated: Callable[[int, bytes], None] | None = None
 
 		self._deviceBrailleData: dict[int, bytes] = {}
 		self._deviceBrailleIndex: dict[int, int] = {}
@@ -116,9 +114,6 @@ class DotPadSdkClient:
 		self._key_callback = KeyCallback(self._on_key_callback)
 		self._message_callback = MessageCallback(self._on_message_callback)
 		self._display_callback = DisplayCallback(self._on_display_callback)
-		self._braille_callback = BrailleTranslateCallback(
-			self._on_braille_translated_callback
-			)
 
 		self._native = DotPadNative(dll_path)
 		self._native.register_key_callback(self._key_callback)
@@ -338,31 +333,39 @@ class DotPadSdkClient:
 		self._throw_if_disposed()
 		return bool(self._native.reset_display(_as_void_p(device_handle)))
 
-	# ------------------------------------------------------------------
-	# Braille and text display
-	# ------------------------------------------------------------------
-
-	def display_braille(
+	def display_text(
 		self,
 		device_handle: int,
 		text: str,
-		*,
-		language: DotPadLanguage | int = DotPadLanguage.ENGLISH,
-		grade: int = 2,
-		english_grade_if_korean: int = 2,
 		) -> bool:
 		self._throw_if_disposed()
+		
+		self.resetDataBuffer()
 
-		return bool(
-			self._native.braille_display(
-				text,
-				int(language),
-				int(grade),
-				int(english_grade_if_korean),
-				_as_void_p(device_handle),
-				self._braille_callback,
+		data = translateTextToBraille(text)
+		data = bytes(data)
+		lines = wrapBrailleCells(data, self.hCellCount * 2 // 3)
+		
+		startX = 0
+		startY = 0
+
+		for lineIndex, line in enumerate(lines):
+			y = startY + (lineIndex * 5)
+			drawBrailleCells(
+				self.setDotInDataBuffer,
+				startX,
+				y,
+				line,
 				)
-			)
+
+		return self.display_data(
+				device_handle,
+				self._data,
+				)
+
+	# ------------------------------------------------------------------
+	# Braille and text display
+	# ------------------------------------------------------------------
 
 	def display_braille_data(
 		self,
@@ -404,6 +407,22 @@ class DotPadSdkClient:
 				)
 			)
 
+	def display_braille_text(
+		self,
+		device_handle: int,
+		text: str,
+		) -> bool:
+		self._throw_if_disposed()
+
+		data = translateTextToBraille(text)
+		data = bytes(data)
+		data = data[:20].ljust(20, b"\x00")
+
+		return self.display_braille_data(
+				device_handle,
+				data,
+				)
+
 	def reset_braille_display(self, device_handle: int) -> bool:
 		self._throw_if_disposed()
 		return bool(
@@ -412,17 +431,6 @@ class DotPadSdkClient:
 				)
 			)
 
-	def set_language(
-		self,
-		language: DotPadLanguage | int,
-		grade: int,
-		) -> None:
-		self._throw_if_disposed()
-		self._native.set_language(int(language), int(grade))
-
-	def set_english_grade_if_korean(self, grade: int) -> None:
-		self._throw_if_disposed()
-		self._native.set_english_grade_if_korean(int(grade))
 
 	# ------------------------------------------------------------------
 	# Native callbacks
@@ -493,10 +501,10 @@ class DotPadSdkClient:
 				self.on_message_received,
 				_handle_value(device_handle),
 				_safe_enum(DotDataCode, message_code),
-				_decode_message(message),
+				message,
 				)
 		except Exception as error:
-			self._log(f"Message callback failed: {error!r}")
+			self._log(f"Message callback failed: {error!r} for {_safe_enum(DotDataCode, message_code)}")
 
 	def _on_display_callback(self, device_handle: int | None) -> None:
 		try:
@@ -507,75 +515,6 @@ class DotPadSdkClient:
 			self._log(f"Display callback failed: {error!r}")
 
 
-	def _on_braille_translated_callback(
-		self,
-		device_handle: int | None,
-		translated_data_pointer: int | None,
-		data_size: int,
-		) -> None:
-		try:
-			handle = int(device_handle or 0)
-			size = int(data_size)
-
-			if not translated_data_pointer or size <= 0:
-				managed_data = b""
-			else:
-				managed_data = ctypes.string_at(
-					translated_data_pointer,
-					size,
-					)
-
-			self._log(
-				"Braille translation callback: "
-				f"handle=0x{handle:X}, size={size}, "
-				f"data={managed_data.hex(' ')}"
-				)
-
-			self._dispatch(
-				self.on_braille_translated,
-				handle,
-				managed_data,
-				)
-
-		except Exception as error:
-			self._log(
-				"Braille translation callback failed: "
-				f"{error!r}"
-				)
-
-	def _org_on_braille_translated_callback(
-		self,
-		device_handle: int | None,
-		translated_data: ctypes.POINTER(ctypes.c_uint8),
-		data_size: int,
-		) -> None:
-		try:
-			handle = _handle_value(device_handle)
-			size = int(data_size)
-
-			self._log(
-				"Native Braille translation callback: "
-				f"handle=0x{handle:X}, size={size}, "
-				f"pointer={bool(translated_data)}"
-				)
-
-			if not translated_data or size <= 0:
-				translated = b""
-			else:
-				translated = ctypes.string_at(translated_data, size)
-
-			self._log(
-				"Translated Braille data: "
-				f"{translated.hex(' ')}"
-				)
-
-			self._dispatch(
-				self.on_braille_translated,
-				handle,
-				translated,
-			)
-		except Exception as error:
-			self._log(f"Braille translation callback failed: {error!r}")
 
 	# ------------------------------------------------------------------
 	# Lifecycle
@@ -605,7 +544,6 @@ class DotPadSdkClient:
 			self.on_key_pressed = None
 			self.on_message_received = None
 			self.on_display_completed = None
-			self.on_braille_translated = None
 
 			self._native.close()
 

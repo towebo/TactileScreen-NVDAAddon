@@ -858,10 +858,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if client is None:
 			return
 
-		text = "Tandkräm!"
+		text = "Tandkräm som smakar. lever skulle jag aldrig köpa, det kan du vara säker på!"
+		text = "12345678901234567. abcde"
 
 		try:
-			success = client.display_braille_text(
+			success = client.display_text(
 				self._device_handle,
 				text,
 			)

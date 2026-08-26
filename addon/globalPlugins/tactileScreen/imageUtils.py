@@ -1,7 +1,6 @@
-# A part of the DotPad NVDA add-on.
-# Copyright (C) 2022 NV Access Limited.
+		# A part of Tactile Screen add-on
+# Copyright (C) 2026 MAWINGU
 # this code is licensed under the GNU General Public License version 2.
-
 
 from enum import IntEnum
 import ctypes

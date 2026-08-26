@@ -1,5 +1,5 @@
-# A part of the DotPad NVDA add-on.
-# Copyright (C) 2022 NV Access Limited.
+		# A part of Tactile Screen add-on
+# Copyright (C) 2026 MAWINGU
 # this code is licensed under the GNU General Public License version 2.
 
 import os
@@ -48,6 +48,36 @@ def drawBrailleCells(drawFunc, x, y, cells):
 				drawFunc(x + dotX, y + dotY)
 		x += 3
 
+def wrapBrailleCells(cells, maxWidth):
+	lines = []
+	wrap_on_these = translateTextToBraille(" ,.!?")
+	
+	while cells:
+		if len(cells) <= maxWidth:
+			lines.append(cells)
+			log.info("Does fit")
+			break
+		
+		breakPos = None
+		
+		for i in range(maxWidth - 1, 0, -1):
+			if cells[i - 1] in wrap_on_these:
+				breakPos = i - 1
+				break
+		if breakPos is None:
+			lines.append(cells[:maxWidth])
+			cells = cells[maxWidth:]
+		else:
+			lines.append(cells[:breakPos])
+			cells = cells[breakPos + 1:]
+
+	return lines
+
+def splitBrailleLines(cells, cellsPerLine):
+	return [
+		cells[i:i + cellsPerLine]
+		for i in range(0, len(cells), cellsPerLine)
+		]
 
 def translateTextToBraille(text, brailleTable=None):
 	if not brailleTable:
