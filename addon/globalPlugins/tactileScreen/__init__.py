@@ -27,6 +27,7 @@ from .DotPadSdkClient import (
 )
 from .deviceDialog import DotPadDeviceDialog
 
+import braille
 from .brailleUtils import translateTextToBraille
 
 import globalPluginHandler
@@ -83,17 +84,22 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	nav_obj_margin = 5
 
 	_is_white_on_black = False
+	_display_mode = 0
 
 	_configName = 'tactileScreen'
 	_configSpec = {
 		'device': 'string(default="")',
 		'auto-refresh-interval': 'int(default=1000)',
+		'display-mode': 'int(default=0)',
 	}
 
 	def __init__(self):
 		super().__init__()
+
+
 		config.conf.spec[self._configName] = self._configSpec
 
+		braille.pre_writeCells.register(self.onWriteCells)
 		self._client: DotPadSdkClient | None = None
 		self._deviceDialog: DotPadDeviceDialog | None = None
 
@@ -112,7 +118,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._refreshPending = False
 
 
-		#tmp self.REFRESH_INTERVAL_MS = config.conf[self._configName]["auto-refresh-interval"]
+		try:
+			self.REFRESH_INTERVAL_MS = config.conf[self._configName]["auto-refresh-interval"]
+		except:
+			pass
+		try:
+			self._display_mode = config.conf[self._configName]["display-mode"]
+		except:
+			pass
 
 		if self._client is not None:
 			stored_device = config.conf[self._configName]["device"]
@@ -126,6 +139,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def terminate(self) -> None:
 		try:
 			self._isTerminating = True
+
+			braille.pre_writeCells.unregister(self.onWriteCells)
+			
 			client = self._client
 			self._client = None
 
@@ -793,7 +809,38 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 		)
 
-		
+	def onWriteCells(self, cells=None, rawText=None, currentCellCount=None, **kwargs):
+		if self._display_mode != 0:
+			return
+		client = self._require_client()
+		if client is None:
+			log.info("client is none")
+			return
+
+		# cells: list of ints, dot patterns 0-255
+		# rawText: the same content as plain text
+		try:
+			success = client.display_text(
+				self._device_handle,
+				rawText,
+				)
+		except Exception as e:
+			msg = F"{e}"
+			log.exception(msg)
+
+
+	def _setDisplayMode(self, mode):
+		if self._display_mode != mode:
+			if mode == 0:
+				ui.message("Braille Mode")
+			if mode == 1:
+				ui.message("Screen Mirror Mode")
+		self._display_mode = mode
+		self._track_mouse = False
+		self._track_nav_obj = False
+		self._auto_refresh = False
+		config.conf[self._configName]["display-mode"] = self._display_mode
+
 
 	@script(gesture="kb:NVDA+Escape")
 	def script_stopTrackingAndAutoUpdate(self, gesture):
@@ -804,6 +851,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	@script(gesture="kb:NVDA+f8")
 	def script_shownavigatorObject(self, gesture):
+		self._setDisplayMode(1)
 		self._track_mouse = False
 		self._track_nav_obj = False
 
@@ -821,6 +869,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	@script(gesture="kb:shift+NVDA+f8")
 	def script_show_mouse_pointer(self, gesture):
+		self._setDisplayMode(1)
 		self._track_mouse = False
 		self._track_nav_obj = False
 		if getLastScriptRepeatCount() == 1:
@@ -850,35 +899,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 
 	@script(
-		description="Test DotPad Braille translation",
+		description="Cycle Display Mode",
 		gesture="kb:NVDA+shift+d",
 		category="DotPad",)
-	def script_displayTestText(self, gesture) -> None:
-		client = self._require_client()
-		if client is None:
-			return
-
-		text = "Tandkräm som smakar. lever skulle jag aldrig köpa, det kan du vara säker på!"
-		text = "12345678901234567. abcde"
-
-		try:
-			success = client.display_text(
-				self._device_handle,
-				text,
-			)
-
-			log.info(
-				"display_braille_data returned %s",
-				success,
-			)
-
-		except Exception:
-			log.exception("DOT_PAD_BRAILLE_DISPLAY failed")
-			ui.message("Braille display call failed")
-			return
-
-		if success:
-			ui.message("Braille display command accepted")
-		else:
-			ui.message("Braille display command rejected")
-
+	def script_cycleDisplayMode(self, gesture) -> None:
+		mode = self._display_mode + 1
+		if mode > 1:
+			mode = 0
+		self._setDisplayMode(mode)
