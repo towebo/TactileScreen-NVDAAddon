@@ -55,7 +55,6 @@ def wrapBrailleCells(cells, maxWidth):
 	while cells:
 		if len(cells) <= maxWidth:
 			lines.append(cells)
-			log.info("Does fit")
 			break
 		
 		breakPos = None
