@@ -212,6 +212,20 @@ class DotPadNative:
             self._dll_directory.close()
             self._dll_directory = None
 
+    def unload(self) -> None:
+        if self.dll is None:
+            return
+            
+        handle = self.dll._handle
+        
+        # Remove Python's reference to the CDLL object first.
+        self.dll = None
+        if handle:
+            ctypes.windll.kernel32.FreeLibrary(
+                ctypes.c_void_p(handle)
+                )
+
+
     def _declare_functions(self) -> None:
         # Connection management.
         self.connect_ble = self.dll.DOT_PAD_CONNECT_BLE

@@ -524,6 +524,8 @@ class DotPadSdkClient:
 		with self._lock:
 			if self._disposed:
 				return
+				
+			self._disposed = True
 
 			try:
 				self._native.ble_scan_stop()
@@ -535,17 +537,18 @@ class DotPadSdkClient:
 				self._native.disconnect(ctypes.c_void_p())
 			except Exception:
 				pass
+			finally:
+				self._display_buffers.clear()
+				self.on_ble_device_found = None
+				self.on_usb_port_found = None
+				self.on_key_pressed = None
+				self.on_message_received = None
+				self.on_display_completed = None
 
-			self._disposed = True
-			self._display_buffers.clear()
-
-			self.on_ble_device_found = None
-			self.on_usb_port_found = None
-			self.on_key_pressed = None
-			self.on_message_received = None
-			self.on_display_completed = None
-
-			self._native.close()
+				native = self._native
+				self._native = None
+				native.close()
+				native.unload()
 
 	def __enter__(self) -> "DotPadSdkClient":
 		self._throw_if_disposed()

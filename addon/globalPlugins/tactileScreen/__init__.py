@@ -839,17 +839,25 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._track_mouse = False
 		self._track_nav_obj = False
 		self._auto_refresh = False
-		config.conf[self._configName]["display-mode"] = self._display_mode
+		#config.conf[self._configName]["display-mode"] = self._display_mode
 
 
-	@script(gesture="kb:NVDA+Escape")
+	@script(
+		category="Tactile Screen",
+		description="Stop Tracking",
+		gesture="kb:NVDA+Escape"
+		)
 	def script_stopTrackingAndAutoUpdate(self, gesture):
 		self._track_mouse = False
 		self._track_nav_obj = False
 		self._auto_refresh = False
 		ui.message("Stop Tracking !")
 
-	@script(gesture="kb:NVDA+f8")
+	@script(
+		category="Tactile Screen",
+		description="Mirror Screen At Navigator Object",
+		gesture="kb:NVDA+f8"
+		)
 	def script_shownavigatorObject(self, gesture):
 		self._setDisplayMode(1)
 		self._track_mouse = False
@@ -867,7 +875,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._auto_refresh = True;
 		self._scheduleRefresh()
 
-	@script(gesture="kb:shift+NVDA+f8")
+	@script(
+		category="Tactile Screen",
+		description="Mirror Screen At Mouse Pointer",
+		gesture="kb:shift+NVDA+f8"
+		)
 	def script_show_mouse_pointer(self, gesture):
 		self._setDisplayMode(1)
 		self._track_mouse = False
@@ -885,8 +897,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._scheduleRefresh()
 
 
-	@script(gesture="kb:control+NVDA+f8")	
-	def script_showSettings(self, gesture):
+	@script(
+		category="Tactile Screen",
+		description="Show Device Dialog",
+		gesture="kb:NVDA+control+shift+f8"
+		)
+	def script_showDeviceDialog(self, gesture):
 		try:
 			client = self._require_client()
 			if client is None:
@@ -899,11 +915,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 
 	@script(
-		description="Cycle Display Mode",
-		gesture="kb:NVDA+shift+d",
-		category="DotPad",)
-	def script_cycleDisplayMode(self, gesture) -> None:
-		mode = self._display_mode + 1
-		if mode > 1:
-			mode = 0
-		self._setDisplayMode(mode)
+		category="Tactile Screen",
+		description="Multiline Braille Mode",
+		gesture="kb:NVDA+control+f8",
+	)
+	def script_MultilineBrailleMode(self, gesture) -> None:
+		self._setDisplayMode(0)
