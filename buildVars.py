@@ -25,7 +25,7 @@ addon_info = {
 	# Translators: Long description to be shown for this add-on on add-on information from add-ons manager
 	"addon_description": _("""Mirrors the computer screen on a DotPad tactile graphical display. """),
 	# version
-	"addon_version": "2026.1.dev-26362",
+	"addon_version": "2026.1.dev-26363",
 	# Author(s)
 	"addon_author": "Karl-Otto Rosenqvist <karl-otto@mawingu.se>",
 	# URL for the add-on documentation support

@@ -65,6 +65,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	curInstance = None
 
 	REFRESH_INTERVAL_MS = 1000
+	
+
 	cur_display_width = 60
 	cur_display_height = 40
 	curCenterX = 0
@@ -100,6 +102,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		config.conf.spec[self._configName] = self._configSpec
 
 		braille.pre_writeCells.register(self.onWriteCells)
+		braille.filter_displayDimensions.register(self._getDisplayDimensions)
 		self._client: DotPadSdkClient | None = None
 		self._deviceDialog: DotPadDeviceDialog | None = None
 
@@ -141,6 +144,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._isTerminating = True
 
 			braille.pre_writeCells.unregister(self.onWriteCells)
+			getDisplayDimensionsUnregistered = braille.filter_displayDimensions.unregister(self._getDisplayDimensions)
 			
 			client = self._client
 			self._client = None
@@ -482,14 +486,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		key_code: DotKeyCode | int,
 		message: str,
 		) -> None:
-		log.info(
-			"DotPad key callback: handle=0x%X, key=%r, message=%r",
-			device_handle,
-			key_code,
-			message,
-			)
-
-		self._handle_key_press(int(key_code))
+		if self._display_mode == 0:
+			self._handle_key_press_multiline_braille(int(key_code))
+		elif self._display_mode == 1:
+			self._handle_key_press_screen_mirroring(int(key_code))
 
 	def _on_message_received(
 		self,
@@ -654,8 +654,33 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				message,
 				)
 
+	def _handle_key_press_multiline_braille(self, keyCode):
+		if keyCode == DotKeyCode.PANNING_LEFT:
+			nav = api.getNavigatorObject()
+			prev_obj = nav.previous
+			if prev_obj is not None:
+				api.setNavigatorObject(prev_obj)
+			
+		elif keyCode == DotKeyCode.PANNING_RIGHT:
+			nav = api.getNavigatorObject()
+			next_obj = nav.next
+			if next_obj is not None:
+				api.setNavigatorObject(next_obj)
 
-	def _handle_key_press(self, keyCode):
+		elif keyCode == DotKeyCode.FUNCTION1:
+			nav = api.getNavigatorObject()
+			prev_obj = nav.previous
+			if prev_obj is not None:
+				api.setNavigatorObject(prev_obj)
+
+		elif keyCode == DotKeyCode.FUNCTION4:
+			nav = api.getNavigatorObject()
+			next_obj = nav.next
+			if next_obj is not None:
+				api.setNavigatorObject(next_obj)
+
+
+	def _handle_key_press_screen_mirroring(self, keyCode):
 		display_index = wx.Display.GetFromPoint((self.curCenterX, self.curCenterY))
 		# Fallback to primary display
 		if display_index == wx.NOT_FOUND:
@@ -808,6 +833,15 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			text,
 
 		)
+
+	def _getDisplayDimensions(self, dimensions: "DisplayDimensions") -> "DisplayDimensions":
+		"""Called by the :attr:`braille.filter_displayDimensions` extension point to get the display dimensions."""
+		from braille import DisplayDimensions  # imported late to avoid a circular import.
+		
+		return DisplayDimensions(
+			numRows=self.cur_display_height // 5, # Include a dot for spacing
+			numCols= self.cur_display_width // 3, # Include a dot for spacing
+	)
 
 	def onWriteCells(self, cells=None, rawText=None, currentCellCount=None, **kwargs):
 		if self._display_mode != 0:
