@@ -28,8 +28,18 @@ from .DotPadSdkClient import (
 from .deviceDialog import DotPadDeviceDialog
 
 import braille
+
+try:
+	from braille.extensions import DisplayDimensions
+	brailleExtensions = braille.extensions
+except (ImportError, AttributeError):
+	from braille import DisplayDimensions
+	brailleExtensions = braille
+
+
 from .brailleUtils import translateTextToBraille
 
+import globalCommands
 import globalPluginHandler
 import tones
 import queueHandler
@@ -57,7 +67,6 @@ def getMousePosition():
 	pt = POINT()
 	ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
 	return pt.x, pt.y
-
 
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
@@ -98,11 +107,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def __init__(self):
 		super().__init__()
 
-
+		self._bleScanTimer = None
 		config.conf.spec[self._configName] = self._configSpec
 
-		braille.pre_writeCells.register(self.onWriteCells)
-		braille.filter_displayDimensions.register(self._getDisplayDimensions)
+		brailleExtensions.pre_writeCells.register(self.onWriteCells)
+		brailleExtensions.filter_displayDimensions.register(self._getDisplayDimensions)
 		self._client: DotPadSdkClient | None = None
 		self._deviceDialog: DotPadDeviceDialog | None = None
 
@@ -135,6 +144,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if stored_device:
 				self._autoConnectDevice = stored_device
 				self._client.start_ble_scan()
+				# Stop scanning after 30 seconds.
+				self._bleScanTimer = wx.CallLater(
+					30000,
+					self._onBleScanTimeout,
+					)
 			else:
 				self._autoConnectDevice = ""
 
@@ -142,9 +156,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def terminate(self) -> None:
 		try:
 			self._isTerminating = True
+			
+			self._cancelBleScanTimer()
 
-			braille.pre_writeCells.unregister(self.onWriteCells)
-			getDisplayDimensionsUnregistered = braille.filter_displayDimensions.unregister(self._getDisplayDimensions)
+			brailleExtensions.pre_writeCells.unregister(self.onWriteCells)
+			getDisplayDimensionsUnregistered = brailleExtensions.filter_displayDimensions.unregister(self._getDisplayDimensions)
 			
 			client = self._client
 			self._client = None
@@ -164,7 +180,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 		finally:
 			super().terminate()
-
 
 
 	def _initialize_dotpad_api(self) -> None:
@@ -244,7 +259,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		return self._client
 
 
-
 	# ------------------------------------------------------------------
 	# SDK event handlers
 	# ------------------------------------------------------------------
@@ -266,6 +280,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._autoConnectDevice = ""
 
 			try:
+				self._cancelBleScanTimer()
 				self._client.stop_ble_scan()
 				handle = self._client.connect_ble(wanted_device)
 
@@ -340,6 +355,31 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		ui.message(f"Connecting to {device_name}")
 
 		return True
+
+
+	def _onBleScanTimeout(self):
+		self._bleScanTimer = None
+		
+		if self._isTerminating:
+			return
+			
+		client = self._client
+		if client is None:
+			return
+			
+		try:
+			client.stop_ble_scan()
+			log.info("BLE auto-connect scan timed out")
+			ui.message("Autoconnect Timed Out")
+		except Exception:
+			log.exception("Error stopping BLE scan")
+
+	def _cancelBleScanTimer(self):
+		timer = self._bleScanTimer
+		self._bleScanTimer = None
+		
+		if timer is not None:
+			timer.Stop()
 
 
 	def _on_connection_started(
@@ -656,29 +696,16 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def _handle_key_press_multiline_braille(self, keyCode):
 		if keyCode == DotKeyCode.PANNING_LEFT:
-			nav = api.getNavigatorObject()
-			prev_obj = nav.previous
-			if prev_obj is not None:
-				api.setNavigatorObject(prev_obj)
+									globalCommands.commands.script_braille_scrollBack(None)
 			
 		elif keyCode == DotKeyCode.PANNING_RIGHT:
-			nav = api.getNavigatorObject()
-			next_obj = nav.next
-			if next_obj is not None:
-				api.setNavigatorObject(next_obj)
+									globalCommands.commands.script_braille_scrollForward(None)
 
 		elif keyCode == DotKeyCode.FUNCTION1:
-			nav = api.getNavigatorObject()
-			prev_obj = nav.previous
-			if prev_obj is not None:
-				api.setNavigatorObject(prev_obj)
+							globalCommands.commands.script_braille_previousLine(None)
 
 		elif keyCode == DotKeyCode.FUNCTION4:
-			nav = api.getNavigatorObject()
-			next_obj = nav.next
-			if next_obj is not None:
-				api.setNavigatorObject(next_obj)
-
+							globalCommands.commands.script_braille_nextLine(None)
 
 	def _handle_key_press_screen_mirroring(self, keyCode):
 		display_index = wx.Display.GetFromPoint((self.curCenterX, self.curCenterY))
@@ -810,7 +837,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		)
 
 
-
 	def displayScreenLocation(self, location, isWhiteOnBlack=False):
 		
 		client = self._require_client()
@@ -836,11 +862,17 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def _getDisplayDimensions(self, dimensions: "DisplayDimensions") -> "DisplayDimensions":
 		"""Called by the :attr:`braille.filter_displayDimensions` extension point to get the display dimensions."""
-		from braille import DisplayDimensions  # imported late to avoid a circular import.
 		
+		rows = self.cur_display_height // 5 # Include a dot for spacing
+		cols = self.cur_display_width // 3 # Include a dot for spacing
+		
+		# To avoid breaking compatibility with other braille displays just put all cells on one row
+		cols = cols * rows
+		rows = 1
+
 		return DisplayDimensions(
-			numRows=self.cur_display_height // 5, # Include a dot for spacing
-			numCols= self.cur_display_width // 3, # Include a dot for spacing
+			numRows=rows,
+			numCols= cols,
 	)
 
 	def onWriteCells(self, cells=None, rawText=None, currentCellCount=None, **kwargs):
