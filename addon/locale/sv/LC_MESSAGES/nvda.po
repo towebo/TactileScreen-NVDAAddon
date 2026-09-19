@@ -1,0 +1,182 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the 'tactileScreen' package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: 'tactileScreen' '2026.1.dev-26380'\n"
+"Report-Msgid-Bugs-To: 'nvda-translations@groups.io'\n"
+"POT-Creation-Date: 2026-09-19 21:08+0200\n"
+"PO-Revision-Date: 2026-09-19 21:10+0200\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Language: sv\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 3.9\n"
+
+#. Add-on summary, usually the user visible name of the addon.
+#. Translators: Summary for this add-on
+#. to be shown on installation and add-on information found in Add-ons Manager.
+#: buildVars.py:23
+msgid "TactileScreen"
+msgstr "TactileScreen"
+
+#. Add-on description
+#. Translators: Long description to be shown for this add-on on add-on information from add-ons manager
+#: buildVars.py:26
+msgid "Mirrors the computer screen on a DotPad tactile graphical display. "
+msgstr "Speglar skärmen på den grafiska ytan på en DotPad. "
+
+#: addon\globalPlugins\tactileScreen\__init__.py:217
+#, python-brace-format
+msgid "Could not load the DotPad SDK: {error}"
+msgstr "Kunde inte ladda DotPad SDK: {error}"
+
+#: addon\globalPlugins\tactileScreen\__init__.py:250
+msgid "The DotPad SDK is not available"
+msgstr "DotPad SDK är inte tillgänglig"
+
+#: addon\globalPlugins\tactileScreen\__init__.py:254
+msgid "The DotPad SDK has been closed"
+msgstr "DotPad SDK har stängts"
+
+#: addon\globalPlugins\tactileScreen\__init__.py:337
+#: addon\globalPlugins\tactileScreen\__init__.py:341
+#, python-brace-format
+msgid "Could not connect to {device_name}"
+msgstr "Kunde inte ansluta till {device_name}"
+
+#: addon\globalPlugins\tactileScreen\__init__.py:353
+#, python-brace-format
+msgid "Connecting to {device_name}"
+msgstr "Ansluter till {device_name}"
+
+#: addon\globalPlugins\tactileScreen\__init__.py:371
+msgid "DotPad Autoconnect Timed Out"
+msgstr "Automatisk anslutning till DotPad gjorde timeout"
+
+#: addon\globalPlugins\tactileScreen\__init__.py:433
+msgid "Could not open the DotPad device dialog"
+msgstr "Kunde inte öppna dialogrutan för DotPad"
+
+#: addon\globalPlugins\tactileScreen\__init__.py:565
+#, python-brace-format
+msgid "Connected to {connected_device_name}"
+msgstr "Ansluten till {connected_device_name}"
+
+#: addon\globalPlugins\tactileScreen\__init__.py:567
+msgid "DotPad connected"
+msgstr "DotPad ansluten"
+
+#: addon\globalPlugins\tactileScreen\__init__.py:613
+msgid "DotPad disconnected"
+msgstr "DotPad bortkopplad"
+
+#: addon\globalPlugins\tactileScreen\__init__.py:682
+#, python-brace-format
+msgid "DotPad error: {message}"
+msgstr "DotPad-fel: {message}"
+
+#: addon\globalPlugins\tactileScreen\__init__.py:684
+msgid "DotPad command error"
+msgstr "DotPad-kommandofel"
+
+#: addon\globalPlugins\tactileScreen\__init__.py:897
+msgid "Braille Mode"
+msgstr "Punktskriftsläge"
+
+#: addon\globalPlugins\tactileScreen\__init__.py:899
+msgid "Screen Mirror Mode"
+msgstr "Skärmspeglingsläge"
+
+#: addon\globalPlugins\tactileScreen\__init__.py:916
+msgid "Stop Tracking "
+msgstr "Sluta följ "
+
+#: addon\globalPlugins\tactileScreen\__init__.py:966
+msgid "Show Device Dialog"
+msgstr "Visa enhetsdialog"
+
+#: addon\globalPlugins\tactileScreen\__init__.py:983
+msgid "Multiline Braille Mode"
+msgstr "Flerradigt punktskriftsläge"
+
+#: addon\globalPlugins\tactileScreen\deviceDialog.py:26
+msgid "Connect to DotPad"
+msgstr "Anslut till DotPad"
+
+#: addon\globalPlugins\tactileScreen\deviceDialog.py:48
+msgid "Select a discovered  DotPad device:"
+msgstr "Välj en upptäkt DotPad:"
+
+#: addon\globalPlugins\tactileScreen\deviceDialog.py:60
+msgid "Discovered DotPad devices"
+msgstr "Upptäckta DotPad-enheter"
+
+#: addon\globalPlugins\tactileScreen\deviceDialog.py:71
+#: addon\globalPlugins\tactileScreen\deviceDialog.py:148
+msgid "Scanning for devices…"
+msgstr "Söker efter enheter…"
+
+#: addon\globalPlugins\tactileScreen\deviceDialog.py:84
+msgid "Connect"
+msgstr "Anslut"
+
+#: addon\globalPlugins\tactileScreen\deviceDialog.py:91
+msgid "Cancel"
+msgstr "Avbryt"
+
+#: addon\globalPlugins\tactileScreen\deviceDialog.py:154
+msgid "Could not start Bluetooth scanning."
+msgstr "Kunde inte starta sökning via Bluetooth."
+
+#: addon\globalPlugins\tactileScreen\deviceDialog.py:158
+msgid "Could not start scanning for DotPad devices."
+msgstr "Kunde inte starta sökning efter DotPad-enheter."
+
+#: addon\globalPlugins\tactileScreen\deviceDialog.py:159
+#: addon\globalPlugins\tactileScreen\deviceDialog.py:259
+#: addon\globalPlugins\tactileScreen\deviceDialog.py:292
+msgid "Tactile Screen"
+msgstr "Taktil skärm"
+
+#: addon\globalPlugins\tactileScreen\deviceDialog.py:193
+msgid "1 device found. Scanning…"
+msgstr "1 enhet hittades. Söker…"
+
+#: addon\globalPlugins\tactileScreen\deviceDialog.py:196
+#, python-brace-format
+msgid "{count} devices found. Scanning…"
+msgstr "{count} enheter hittades. Söker…"
+
+#: addon\globalPlugins\tactileScreen\deviceDialog.py:228
+msgid "Select a device before connecting."
+msgstr "Välj en enhet innan du ansluter."
+
+#: addon\globalPlugins\tactileScreen\deviceDialog.py:239
+#, python-brace-format
+msgid "Connecting to {device_name}…"
+msgstr "Ansluter till {device_name}…"
+
+#: addon\globalPlugins\tactileScreen\deviceDialog.py:254
+#: addon\globalPlugins\tactileScreen\deviceDialog.py:287
+#: addon\globalPlugins\tactileScreen\deviceDialog.py:291
+#, python-brace-format
+msgid "Could not connect to {device_name}."
+msgstr "Kunde inte ansluta till {device_name}."
+
+#: addon\globalPlugins\tactileScreen\deviceDialog.py:258
+#, python-brace-format
+msgid "Could not start a connection to {device_name}."
+msgstr "Kunde inte starta anslutning till {device_name}."
+
+#, fuzzy, python-brace-format
+#~ msgid "could not connect to {device_name}."
+#~ msgstr "Kunde inte ansluta till {device_name}."
+
+#~ msgid "DotPad"
+#~ msgstr "DotPad"

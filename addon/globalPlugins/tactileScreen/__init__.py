@@ -41,6 +41,9 @@ from .brailleUtils import translateTextToBraille
 
 import globalCommands
 import globalPluginHandler
+import addonHandler
+import locale
+
 import tones
 import queueHandler
 from scriptHandler import script, getLastScriptRepeatCount
@@ -68,6 +71,8 @@ def getMousePosition():
 	ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
 	return pt.x, pt.y
 
+
+addonHandler.initTranslation()
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
@@ -187,7 +192,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		api_directory = plugin_directory / "SDK"
 		dll_path = api_directory / "DotPadSDK-3.0.0.dll"
 
-		log.info("Initializing DotPad SDK from %s", dll_path)
+		log.debug("Initializing DotPad SDK from %s", dll_path)
 
 		try:
 			self._client = DotPadSdkClient(
@@ -206,17 +211,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._client.on_message_received = (
 				self._on_message_received
 			)
-			#tmp self._client.on_display_completed = (
-			#	self._on_display_completed
-			#)
-			#tmp self._client.on_braille_translated = (
-			#	self._on_braille_translated
-			#)
-
 		except DotPadLoadError as error:
 			self._client = None
 			log.exception("Could not load the DotPad SDK")
-			ui.message(f"Could not load the DotPad SDK: {error}")
+			ui.message(_("Could not load the DotPad SDK: {error}").format(error=error))
 
 		except Exception:
 			self._client = None
@@ -224,11 +222,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			ui.message("Could not initialize the DotPad SDK")
 
 		else:
-			log.info("DotPad SDK initialized successfully")
+			log.debug("DotPad SDK initialized successfully")
 
 	@staticmethod
 	def _log_sdk_message(message: str) -> None:
-		log.info("DotPad SDK: %s", message)
+		log.debug("DotPad SDK: %s", message)
 
 	@staticmethod
 	def _dispatch_to_nvda_thread(
@@ -249,11 +247,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def _require_client(self) -> DotPadSdkClient | None:
 		if self._client is None:
-			ui.message("The DotPad SDK is not available")
+			ui.message(_("The DotPad SDK is not available"))
 			return None
 
 		if self._client.disposed:
-			ui.message("The DotPad SDK has been closed")
+			ui.message(_("The DotPad SDK has been closed"))
 			return None
 
 		return self._client
@@ -264,7 +262,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	# ------------------------------------------------------------------
 
 	def _on_ble_device_found(self, device_name: str) -> None:
-		log.info("DotPad BLE device found: %r", device_name)
+		log.debug("DotPad BLE device found: %r", device_name)
 		if self._deviceDialog is not None:
 			self._deviceDialog.add_device(device_name)
 
@@ -294,7 +292,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._pending_device_handle = handle
 				self._pending_device_name = wanted_device
 
-				log.info(
+				log.debug(
 					"Automatic DotPad connection started: "
 					"name=%r, handle=0x%X",
 					wanted_device,
@@ -336,23 +334,23 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				"Could not connect to DotPad %r",
 				device_name,
 			)
-			ui.message(f"Could not connect to {device_name}")
+			ui.message(_("Could not connect to {device_name}").format(device_name=device_name))
 			return False
 
 		if not handle:
-			ui.message(f"Could not connect to {device_name}")
+			ui.message(_("Could not connect to {device_name}")).format(device_name=device_name)
 			return False
 
 		self._pending_device_handle = handle
 		self._pending_device_name = device_name
 
-		log.info(
+		log.debug(
 			"DotPad connection attempt started: "
 			"name=%r, handle=0x%X",
 			device_name,
 			handle,
 		)
-		ui.message(f"Connecting to {device_name}")
+		ui.message(_("Connecting to {device_name}").format(device_name=device_name))
 
 		return True
 
@@ -369,8 +367,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			
 		try:
 			client.stop_ble_scan()
-			log.info("BLE auto-connect scan timed out")
-			ui.message("Autoconnect Timed Out")
+			log.debug("BLE auto-connect scan timed out")
+			ui.message(_("DotPad Autoconnect Timed Out"))
 		except Exception:
 			log.exception("Error stopping BLE scan")
 
@@ -390,7 +388,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._pending_device_name = device_name
 		self._pending_device_handle = device_handle
 		
-		log.info(
+		log.debug(
 			"Connection started to %s (0x%X)",
 			device_name,
 			device_handle,
@@ -398,12 +396,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 
 	def outputDataBuffer(self, client, fullRefresh=False) -> bool:
-		#tmp self._displayDoneEvent.clear()
 		client.display_data(
 			self._device_handle,
 			client._data
 		)
-		#tmp self._displayDoneEvent.wait(3)
 
 
 	def _showDeviceDialog(self) -> None:
@@ -434,7 +430,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			log.debug("DotPad: device dialog closed")
 		except Exception:
 			log.exception("Could not show the DotPad device dialog")
-			ui.message("Could not open the DotPad device dialog")
+			ui.message(_("Could not open the DotPad device dialog"))
 
 		finally:
 			self._deviceDialog = None
@@ -464,7 +460,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 		try:
 			graphic_success = client.reset_display(self.handle)
-			log.info(
+			log.debug(
 				"DOT_PAD_RESET_DISPLAY(handle=0x%X) returned %s",
 				self.handle,
 				graphic_success,
@@ -474,7 +470,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 		try:
 			braille_success = client.reset_braille_display(self.handle)
-			log.info(
+			log.debug(
 				"DOT_PAD_RESET_BRAILLE_DISPLAY(handle=0x%X) returned %s",
 				self.handle,
 				braille_success,
@@ -537,7 +533,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		message_code: DotDataCode | int,
 		message: str,
 		) -> None:
-		log.info("DotPad message: handle=0x%X, code=%r, message=%r",
+		log.debug("DotPad message: handle=0x%X, code=%r, message=%r",
 		device_handle,
 		message_code,
 		message,
@@ -561,14 +557,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 			config.conf[self._configName]["device"] = self._connected_device_name
 
-			log.info("DotPad connected: handle=0x%X, name=%r",
+			log.debug("DotPad connected: handle=0x%X, name=%r",
 				device_handle,
 				self._connected_device_name,
 				)
 
-			ui.message(f"Connected to {self._connected_device_name}"
+			ui.message(_("Connected to {connected_device_name}").format(connected_device_name=self._connected_device_name)
 				if self._connected_device_name
-				else "DotPad connected"
+				else _("DotPad connected")
 				)
 
 			client = self._require_client()
@@ -602,7 +598,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				log.exception("Could not request DotPad version information")
 
 		elif message_code == DotDataCode.DISCONNECTED:
-			log.info("DotPad disconnected: handle=0x%X",
+			log.debug("DotPad disconnected: handle=0x%X",
 				device_handle,
 				)
 
@@ -614,13 +610,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._pending_device_handle = 0
 				self._pending_device_name = ""
 
-			ui.message("DotPad disconnected")
+			ui.message(_("DotPad disconnected"))
 
 		elif message_code == DotDataCode.BOARD_INFO:
 			pass
 
 		elif message_code == DotDataCode.BLE_MAC_ADDRESS:
-			log.info(
+			log.debug(
 				"DotPad BLE MAC address: handle=0x%X, address=%r",
 				device_handle,
 				message,
@@ -632,7 +628,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._connected_device_name = device_name
 				
 				
-				log.info(
+				log.debug(
 					"DotPad device name received and stored: %r",
 					device_name,
 					)
@@ -643,13 +639,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					)
 
 		elif message_code == DotDataCode.DEVICE_FW_VERSION:
-			log.info(
+			log.debug(
 				"DotPad firmware version: %r",
 				message,
 				)
 
 		elif message_code == DotDataCode.DEVICE_HW_VERSION:
-			log.info(
+			log.debug(
 				"DotPad hardware version: %r",
 				message,
 				)
@@ -683,9 +679,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				)
 
 			if message:
-				ui.message(f"DotPad error: {message}")
+				ui.message(_("DotPad error: {message}").format(message=message))
 			else:
-				ui.message("DotPad command error")
+				ui.message(_("DotPad command error"))
 
 		elif message_code == DotDataCode.COMMAND_NONE:
 			log.debug(
@@ -880,7 +876,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			return
 		client = self._require_client()
 		if client is None:
-			log.info("client is none")
+			log.debug("client is none")
 			return
 
 		# cells: list of ints, dot patterns 0-255
@@ -898,9 +894,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _setDisplayMode(self, mode):
 		if self._display_mode != mode:
 			if mode == 0:
-				ui.message("Braille Mode")
+				ui.message(_("Braille Mode"))
 			if mode == 1:
-				ui.message("Screen Mirror Mode")
+				ui.message(_("Screen Mirror Mode"))
 		self._display_mode = mode
 		self._track_mouse = False
 		self._track_nav_obj = False
@@ -917,7 +913,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._track_mouse = False
 		self._track_nav_obj = False
 		self._auto_refresh = False
-		ui.message("Stop Tracking !")
+		ui.message(_("Stop Tracking "))
+		if getLastScriptRepeatCount() == 1:
+			pass
 
 	@script(
 		category="Tactile Screen",
@@ -965,7 +963,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	@script(
 		category="Tactile Screen",
-		description="Show Device Dialog",
+		description=_("Show Device Dialog"),
 		gesture="kb:NVDA+control+shift+f8"
 		)
 	def script_showDeviceDialog(self, gesture):
@@ -982,7 +980,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	@script(
 		category="Tactile Screen",
-		description="Multiline Braille Mode",
+		description=_("Multiline Braille Mode"),
 		gesture="kb:NVDA+control+f8",
 	)
 	def script_MultilineBrailleMode(self, gesture) -> None:

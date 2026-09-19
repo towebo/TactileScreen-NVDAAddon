@@ -5,14 +5,10 @@
 # deviceDialog.py
 
 from __future__ import annotations
-
 from collections.abc import Callable
-
 import wx
-
 import gui
 from logHandler import log
-
 from .DotPadSdkClient import DotPadSdkClient
 
 
@@ -27,7 +23,7 @@ class DotPadDeviceDialog(wx.Dialog):
     ) -> None:
         super().__init__(
             parent,
-            title="Connect to DotPad",
+            title=_("Connect to DotPad"),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
         )
 
@@ -49,7 +45,7 @@ class DotPadDeviceDialog(wx.Dialog):
 
         instructions = wx.StaticText(
             self,
-            label="Select a discovered Bluetooth DotPad device:",
+            label=_("Select a discovered  DotPad device:"),
         )
         main_sizer.Add(
             instructions,
@@ -61,7 +57,7 @@ class DotPadDeviceDialog(wx.Dialog):
             self,
             choices=[],
             style=wx.LB_SINGLE,
-            name="Discovered DotPad devices",
+            name=_("Discovered DotPad devices"),
         )
         main_sizer.Add(
             self.device_list,
@@ -72,7 +68,7 @@ class DotPadDeviceDialog(wx.Dialog):
 
         self.status_label = wx.StaticText(
             self,
-            label="Scanning for devices…",
+            label=_("Scanning for devices…"),
         )
         main_sizer.Add(
             self.status_label,
@@ -85,14 +81,14 @@ class DotPadDeviceDialog(wx.Dialog):
         self.connect_button = wx.Button(
             self,
             wx.ID_OK,
-            label="Connect",
+            label=_("Connect"),
         )
         self.connect_button.Disable()
 
         self.cancel_button = wx.Button(
             self,
             wx.ID_CANCEL,
-            label="Cancel",
+            label=_("Cancel"),
         )
 
         button_sizer.AddButton(self.connect_button)
@@ -149,18 +145,18 @@ class DotPadDeviceDialog(wx.Dialog):
             self._client.start_ble_scan()
 
             self._scanning = True
-            self.status_label.SetLabel("Scanning for devices…")
+            self.status_label.SetLabel(_("Scanning for devices…"))
             self.device_list.SetFocus()
 
         except Exception:
             log.exception("Could not start DotPad BLE scanning")
             self.status_label.SetLabel(
-                "Could not start Bluetooth scanning."
+                _("Could not start Bluetooth scanning.")
             )
 
             gui.messageBox(
-                "NVDA could not start scanning for DotPad devices.",
-                "DotPad",
+                _("Could not start scanning for DotPad devices."),
+                _("Tactile Screen"),
                 wx.OK | wx.ICON_ERROR,
                 parent=self,
             )
@@ -194,10 +190,10 @@ class DotPadDeviceDialog(wx.Dialog):
 
         count = len(self._devices)
         if count == 1:
-            self.status_label.SetLabel("1 device found. Scanning…")
+            self.status_label.SetLabel(_("1 device found. Scanning…"))
         else:
             self.status_label.SetLabel(
-                f"{count} devices found. Scanning…"
+                _("{count} devices found. Scanning…").format(count=count) 
             )
 
     # ------------------------------------------------------------------
@@ -229,7 +225,7 @@ class DotPadDeviceDialog(wx.Dialog):
         if selection == wx.NOT_FOUND:
             wx.Bell()
             self.status_label.SetLabel(
-                "Select a device before connecting."
+                _("Select a device before connecting.")
             )
             self.device_list.SetFocus()
             return
@@ -240,7 +236,7 @@ class DotPadDeviceDialog(wx.Dialog):
         self.cancel_button.Disable()
         self.device_list.Disable()
         self.status_label.SetLabel(
-            f"Connecting to {device_name}…"
+            _("Connecting to {device_name}…").format(device_name=device_name)
         )
 
         # Stop discovery before starting a connection.
@@ -255,12 +251,12 @@ class DotPadDeviceDialog(wx.Dialog):
                 self.connect_button.Enable()
 
                 self.status_label.SetLabel(
-                    f"Could not connect to {device_name}."
+                    _("Could not connect to {device_name}.").format(device_name=device_name)
                 )
 
                 gui.messageBox(
-                    f"Could not start a connection to {device_name}.",
-                    "DotPad",
+                    _("Could not start a connection to {device_name}.").format(device_name=device_name),
+                    _("Tactile Screen"),
                     wx.OK | wx.ICON_ERROR,
                     parent=self,
                 )
@@ -288,12 +284,12 @@ class DotPadDeviceDialog(wx.Dialog):
             self.connect_button.Enable()
 
             self.status_label.SetLabel(
-                f"Could not connect to {device_name}."
+                _("Could not connect to {device_name}.").format(device_name=device_name)
             )
 
             gui.messageBox(
-                f"NVDA could not connect to {device_name}.",
-                "DotPad",
+                _("Could not connect to {device_name}.").format(device_name=device_name),
+                _("Tactile Screen"),
                 wx.OK | wx.ICON_ERROR,
                 parent=self,
             )
@@ -319,3 +315,5 @@ class DotPadDeviceDialog(wx.Dialog):
             self.EndModal(result)
         else:
             self.Destroy()
+
+            

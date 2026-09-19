@@ -25,7 +25,7 @@ addon_info = {
 	# Translators: Long description to be shown for this add-on on add-on information from add-ons manager
 	"addon_description": _("""Mirrors the computer screen on a DotPad tactile graphical display. """),
 	# version
-	"addon_version": "2026.1.dev-26370",
+	"addon_version": "2026.1.dev-26381",
 	# Author(s)
 	"addon_author": "Karl-Otto Rosenqvist <karl-otto@mawingu.se>",
 	# URL for the add-on documentation support
@@ -53,7 +53,11 @@ addon_info = {
 pythonSources = []
 
 # Files that contain strings for translation. Usually your python sources
-i18nSources = pythonSources + ["buildVars.py"]
+i18nSources = pythonSources + [
+	"buildVars.py",
+	"./addon/globalPlugins/tactileScreen/__init__.py",
+	"./addon/globalPlugins/tactileScreen/deviceDialog.py",	
+	]
 
 # Files that will be ignored when building the nvda-addon file
 # Paths are relative to the addon directory, not to the root directory of your addon sources.
