@@ -1,7 +1,7 @@
+# -*- coding: UTF-8 -*-
 		# A part of Tactile Screen add-on
 # Copyright (C) 2026 MAWINGU
 # this code is licensed under the GNU General Public License version 2.
-
 
 import math
 import ctypes
@@ -59,7 +59,11 @@ from locationHelper import RectLTRB
 import ctypes
 from ctypes import wintypes
 
+DISPLAY_MODE_MULTILINE_BRAILLE = 0
+DISPLAY_MODE_SCREEN_MIRRORING = 1
 
+
+# Useful when getting mouse cursor position
 class POINT(ctypes.Structure):
 	_fields_ = [
 		("x", wintypes.LONG),
@@ -93,14 +97,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	_isTerminating = False
 	_auto_refresh = False
 	_refreshPending = False
+
+	_track_mouse = False
 	_track_nav_obj = False
 	_last_nav_obj = None
-	_track_mouse = False
-
 	nav_obj_margin = 5
 
 	_is_white_on_black = False
-	_display_mode = 0
+	_display_mode = DISPLAY_MODE_MULTILINE_BRAILLE
 
 	_configName = 'tactileScreen'
 	_configSpec = {
@@ -133,7 +137,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 		self._isTerminating = False
 		self._refreshPending = False
-
 
 		try:
 			self.REFRESH_INTERVAL_MS = config.conf[self._configName]["auto-refresh-interval"]
@@ -187,6 +190,29 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			super().terminate()
 
 
+	@staticmethod
+	def _dispatch_to_nvda_thread(
+		function: Callable[..., None],
+		*args: Any,
+	) -> None:
+		"""
+		DotPad callbacks may run on SDK-created threads.
+
+		Queue callback processing onto NVDA's event queue before accessing
+		NVDA objects, wx controls, speech, or other UI components.
+		"""
+		queueHandler.queueFunction(
+			queueHandler.eventQueue,
+			function,
+			*args,
+		)
+
+	@staticmethod
+	def _log_sdk_message(message: str) -> None:
+		log.debug("DotPad SDK: %s", message)
+
+
+	# DotPad related methods
 	def _initialize_dotpad_api(self) -> None:
 		plugin_directory = Path(__file__).resolve().parent
 		api_directory = plugin_directory / "SDK"
@@ -224,43 +250,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		else:
 			log.debug("DotPad SDK initialized successfully")
 
-	@staticmethod
-	def _log_sdk_message(message: str) -> None:
-		log.debug("DotPad SDK: %s", message)
-
-	@staticmethod
-	def _dispatch_to_nvda_thread(
-		function: Callable[..., None],
-		*args: Any,
-	) -> None:
-		"""
-		DotPad callbacks may run on SDK-created threads.
-
-		Queue callback processing onto NVDA's event queue before accessing
-		NVDA objects, wx controls, speech, or other UI components.
-		"""
-		queueHandler.queueFunction(
-			queueHandler.eventQueue,
-			function,
-			*args,
-		)
-
-	def _require_client(self) -> DotPadSdkClient | None:
-		if self._client is None:
-			ui.message(_("The DotPad SDK is not available"))
-			return None
-
-		if self._client.disposed:
-			ui.message(_("The DotPad SDK has been closed"))
-			return None
-
-		return self._client
-
-
-	# ------------------------------------------------------------------
-	# SDK event handlers
-	# ------------------------------------------------------------------
-
+	# DotPad SDK Events
 	def _on_ble_device_found(self, device_name: str) -> None:
 		log.debug("DotPad BLE device found: %r", device_name)
 		if self._deviceDialog is not None:
@@ -309,213 +299,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _on_usb_port_found(self, port_name: str) -> None:
 		log.info("DotPad serial port found: %r", port_name)
 
-	# ------------------------------------------------------------------
-	# Connection method used by the BLE scanning dialog
-	# ------------------------------------------------------------------
-
-	def connect_to_ble_device(self, device_name: str) -> bool:
-		client = self._require_client()
-		if client is None:
-			return False
-
-		try:
-			client.stop_ble_scan()
-		except Exception:
-			# Scanning may already have stopped.
-			log.debugWarning(
-				"Could not stop DotPad BLE scan before connection",
-				exc_info=True,
-			)
-
-		try:
-			handle = client.connect_ble(device_name)
-		except Exception:
-			log.exception(
-				"Could not connect to DotPad %r",
-				device_name,
-			)
-			ui.message(_("Could not connect to {device_name}").format(device_name=device_name))
-			return False
-
-		if not handle:
-			ui.message(_("Could not connect to {device_name}")).format(device_name=device_name)
-			return False
-
-		self._pending_device_handle = handle
-		self._pending_device_name = device_name
-
-		log.debug(
-			"DotPad connection attempt started: "
-			"name=%r, handle=0x%X",
-			device_name,
-			handle,
-		)
-		ui.message(_("Connecting to {device_name}").format(device_name=device_name))
-
-		return True
-
-
-	def _onBleScanTimeout(self):
-		self._bleScanTimer = None
-		
-		if self._isTerminating:
-			return
-			
-		client = self._client
-		if client is None:
-			return
-			
-		try:
-			client.stop_ble_scan()
-			log.debug("BLE auto-connect scan timed out")
-			ui.message(_("DotPad Autoconnect Timed Out"))
-		except Exception:
-			log.exception("Error stopping BLE scan")
-
-	def _cancelBleScanTimer(self):
-		timer = self._bleScanTimer
-		self._bleScanTimer = None
-		
-		if timer is not None:
-			timer.Stop()
-
-
-	def _on_connection_started(
-		self,
-		device_name: str,
-		device_handle: int,
-		) -> None:
-		self._pending_device_name = device_name
-		self._pending_device_handle = device_handle
-		
-		log.debug(
-			"Connection started to %s (0x%X)",
-			device_name,
-			device_handle,
-			)
-
-
-	def outputDataBuffer(self, client, fullRefresh=False) -> bool:
-		client.display_data(
-			self._device_handle,
-			client._data
-		)
-
-
-	def _showDeviceDialog(self) -> None:
-		if self._deviceDialog is not None:
-			try:
-				self._deviceDialog.Raise()
-				self._deviceDialog.SetFocus()
-				return
-			except RuntimeError:
-				self._deviceDialog = None
-
-		dialog =	 None
-
-		try:
-			log.debug("DotPad: calling prePopup")
-			gui.mainFrame.prePopup()
-			log.debug("DotPad: prePopup completed")
-
-			dialog = DotPadDeviceDialog(
-				gui.mainFrame,
-				self._client,
-				self._on_connection_started,
-				)
-			self._deviceDialog = dialog
-
-			log.debug("DotPad: showing device dialog")
-			dialog.ShowModal()
-			log.debug("DotPad: device dialog closed")
-		except Exception:
-			log.exception("Could not show the DotPad device dialog")
-			ui.message(_("Could not open the DotPad device dialog"))
-
-		finally:
-			self._deviceDialog = None
-			if dialog is not None:
-				try:
-					dialog.Destroy()
-				except Exception:
-					log.exception("Could not destroy the DotPad dialog")
-
-			try:
-				gui.mainFrame.postPopup()
-			except Exception:
-				log.exception("DotPad postPopup failed")
-
-	def _clearDotPadDisplays(self, device_handle: int) -> bool:
-		client = self._client
-		if client is None:
-			log.error("Cannot clear DotPad displays: SDK client is unavailable")
-			return False
-
-		if not self.handle:
-			log.error("Cannot clear DotPad displays: invalid device handle")
-			return False
-
-		graphic_success = False
-		braille_success = False
-
-		try:
-			graphic_success = client.reset_display(self.handle)
-			log.debug(
-				"DOT_PAD_RESET_DISPLAY(handle=0x%X) returned %s",
-				self.handle,
-				graphic_success,
-			)
-		except Exception:
-			log.exception("Could not reset the DotPad graphical display")
-
-		try:
-			braille_success = client.reset_braille_display(self.handle)
-			log.debug(
-				"DOT_PAD_RESET_BRAILLE_DISPLAY(handle=0x%X) returned %s",
-				self.handle,
-				braille_success,
-			)
-		except Exception:
-			log.exception("Could not reset the DotPad Braille display")
-
-		return graphic_success and braille_success
-
-
-	def _scheduleRefresh(self):
-		if self._isTerminating or self._refreshPending:
-			return
-
-		self._refreshPending = True
-		core.callLater(
-			self.REFRESH_INTERVAL_MS,
-			self._onRefreshTimer,
-		)
-
-	def _onRefreshTimer(self):
-		self._refreshPending = False
-
-		if self._isTerminating:
-			return
-
-		try:
-			if self._track_nav_obj and self._last_nav_obj != api.getNavigatorObject():
-				self.showNavigatorObject(self._is_white_on_black)
-				return
-			elif self._track_mouse:
-				self.showMousePointerObject(self._is_white_on_black)
-				return
-
-			location = self.get_view_rect(self.curCenterX, self.curCenterY)
-			location = self.adjust_rect(location)
-			self.displayScreenLocation(location, self._is_white_on_black)
-		except Exception:
-			# Prevent one failed refresh from stopping future refreshes.
-			log.exception("Error refreshing tactile display")
-		finally:
-			if self._auto_refresh:
-				self._scheduleRefresh()
-
-
 	def _on_key_pressed(
 		self,
 		device_handle: int,
@@ -527,6 +310,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		elif self._display_mode == 1:
 			self._handle_key_press_screen_mirroring(int(key_code))
 
+	
 	def _on_message_received(
 		self,
 		device_handle: int,
@@ -689,6 +473,246 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				device_handle,
 				message,
 				)
+
+
+
+
+	# Plugin Events	
+
+	def _onBleScanTimeout(self):
+		self._bleScanTimer = None
+		
+		if self._isTerminating:
+			return
+			
+		client = self._client
+		if client is None:
+			return
+			
+		try:
+			client.stop_ble_scan()
+			log.debug("BLE auto-connect scan timed out")
+			ui.message(_("DotPad Autoconnect Timed Out"))
+		except Exception:
+			log.exception("Error stopping BLE scan")
+
+	def _onRefreshTimer(self):
+		self._refreshPending = False
+
+		if self._isTerminating:
+			return
+
+		try:
+			if self._track_nav_obj and self._last_nav_obj != api.getNavigatorObject():
+				self.showNavigatorObject(self._is_white_on_black)
+				return
+			elif self._track_mouse:
+				self.showMousePointerObject(self._is_white_on_black)
+				return
+
+			location = self.get_view_rect(self.curCenterX, self.curCenterY)
+			location = self.adjust_rect(location)
+			self.displayScreenLocation(location, self._is_white_on_black)
+		except Exception:
+			# Prevent one failed refresh from stopping future refreshes.
+			log.exception("Error refreshing tactile display")
+		finally:
+			if self._auto_refresh:
+				self._scheduleRefresh()
+
+
+
+	def _on_connection_started(
+		self,
+		device_name: str,
+		device_handle: int,
+		) -> None:
+		self._pending_device_name = device_name
+		self._pending_device_handle = device_handle
+		
+		log.debug(
+			"Connection started to %s (0x%X)",
+			device_name,
+			device_handle,
+			)
+
+
+	# Device Dialog related
+
+	def _showDeviceDialog(self) -> None:
+		if self._deviceDialog is not None:
+			try:
+				self._deviceDialog.Raise()
+				self._deviceDialog.SetFocus()
+				return
+			except RuntimeError:
+				self._deviceDialog = None
+
+		dialog =	 None
+
+		try:
+			log.debug("DotPad: calling prePopup")
+			gui.mainFrame.prePopup()
+			log.debug("DotPad: prePopup completed")
+
+			dialog = DotPadDeviceDialog(
+				gui.mainFrame,
+				self._client,
+				self._on_connection_started,
+				)
+			self._deviceDialog = dialog
+
+			log.debug("DotPad: showing device dialog")
+			dialog.ShowModal()
+			log.debug("DotPad: device dialog closed")
+		except Exception:
+			log.exception("Could not show the DotPad device dialog")
+			ui.message(_("Could not open the DotPad device dialog"))
+
+		finally:
+			self._deviceDialog = None
+			if dialog is not None:
+				try:
+					dialog.Destroy()
+				except Exception:
+					log.exception("Could not destroy the DotPad dialog")
+
+			try:
+				gui.mainFrame.postPopup()
+			except Exception:
+				log.exception("DotPad postPopup failed")
+
+
+	# Used by the Device Dialog
+	def connect_to_ble_device(self, device_name: str) -> bool:
+		client = self._require_client()
+		if client is None:
+			return False
+
+		try:
+			client.stop_ble_scan()
+		except Exception:
+			# Scanning may already have stopped.
+			log.debugWarning(
+				"Could not stop DotPad BLE scan before connection",
+				exc_info=True,
+			)
+
+		try:
+			handle = client.connect_ble(device_name)
+		except Exception:
+			log.exception(
+				"Could not connect to DotPad %r",
+				device_name,
+			)
+			ui.message(_("Could not connect to {device_name}").format(device_name=device_name))
+			return False
+
+		if not handle:
+			ui.message(_("Could not connect to {device_name}")).format(device_name=device_name)
+			return False
+
+		self._pending_device_handle = handle
+		self._pending_device_name = device_name
+
+		log.debug(
+			"DotPad connection attempt started: "
+			"name=%r, handle=0x%X",
+			device_name,
+			handle,
+		)
+		ui.message(_("Connecting to {device_name}").format(device_name=device_name))
+
+		return True
+
+
+
+	# Plugin functions
+
+	def _require_client(self) -> DotPadSdkClient | None:
+		if self._client is None:
+			ui.message(_("The DotPad SDK is not available"))
+			return None
+
+		if self._client.disposed:
+			ui.message(_("The DotPad SDK has been closed"))
+			return None
+
+		return self._client
+
+	def _setDisplayMode(self, mode):
+		if self._display_mode != mode:
+			if mode == DISPLAY_MODE_MULTILINE_BRAILLE:
+				ui.message(_("Braille Mode"))
+			if mode == DISPLAY_MODE_SCREEN_MIRRORING:
+				ui.message(_("Screen Mirror Mode"))
+		self._display_mode = mode
+		self._track_mouse = False
+		self._track_nav_obj = False
+		self._auto_refresh = False
+		#config.conf[self._configName]["display-mode"] = self._display_mode
+
+
+	def outputDataBuffer(self, client, fullRefresh=False) -> bool:
+		client.display_data(
+			self._device_handle,
+			client._data
+		)
+
+	def _clearDotPadDisplays(self, device_handle: int) -> bool:
+		client = self._client
+		if client is None:
+			log.error("Cannot clear DotPad displays: SDK client is unavailable")
+			return False
+
+		if not self.handle:
+			log.error("Cannot clear DotPad displays: invalid device handle")
+			return False
+
+		graphic_success = False
+		braille_success = False
+
+		try:
+			graphic_success = client.reset_display(self.handle)
+			log.debug(
+				"DOT_PAD_RESET_DISPLAY(handle=0x%X) returned %s",
+				self.handle,
+				graphic_success,
+			)
+		except Exception:
+			log.exception("Could not reset the DotPad graphical display")
+
+		try:
+			braille_success = client.reset_braille_display(self.handle)
+			log.debug(
+				"DOT_PAD_RESET_BRAILLE_DISPLAY(handle=0x%X) returned %s",
+				self.handle,
+				braille_success,
+			)
+		except Exception:
+			log.exception("Could not reset the DotPad Braille display")
+
+		return graphic_success and braille_success
+
+
+	def _cancelBleScanTimer(self):
+		timer = self._bleScanTimer
+		self._bleScanTimer = None
+		
+		if timer is not None:
+			timer.Stop()
+
+
+
+	def _scheduleRefresh(self):
+		if self._isTerminating or self._refreshPending:
+			return
+
+		self._refreshPending = True
+		core.callLater(
+			self.REFRESH_INTERVAL_MS,
+			self._onRefreshTimer,
+		)
 
 	def _handle_key_press_multiline_braille(self, keyCode):
 		if keyCode == DotKeyCode.PANNING_LEFT:
@@ -856,9 +880,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 		)
 
+	# NVDA extentions used in braille handling
+
 	def _getDisplayDimensions(self, dimensions: "DisplayDimensions") -> "DisplayDimensions":
-		"""Called by the :attr:`braille.filter_displayDimensions` extension point to get the display dimensions."""
-		
+		# Only manipulate the display dimensions if displaying multiline braille
+		if self._display_mode != 0:
+			return dimensions
 		rows = self.cur_display_height // 5 # Include a dot for spacing
 		cols = self.cur_display_width // 3 # Include a dot for spacing
 		
@@ -891,19 +918,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			log.exception(msg)
 
 
-	def _setDisplayMode(self, mode):
-		if self._display_mode != mode:
-			if mode == 0:
-				ui.message(_("Braille Mode"))
-			if mode == 1:
-				ui.message(_("Screen Mirror Mode"))
-		self._display_mode = mode
-		self._track_mouse = False
-		self._track_nav_obj = False
-		self._auto_refresh = False
-		#config.conf[self._configName]["display-mode"] = self._display_mode
-
-
+	# Scripts
 	@script(
 		category="Tactile Screen",
 		description="Stop Tracking",
@@ -923,7 +938,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		gesture="kb:NVDA+f8"
 		)
 	def script_shownavigatorObject(self, gesture):
-		self._setDisplayMode(1)
+		self._setDisplayMode(DISPLAY_MODE_SCREEN_MIRRORING)
 		self._track_mouse = False
 		self._track_nav_obj = False
 
@@ -945,7 +960,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		gesture="kb:shift+NVDA+f8"
 		)
 	def script_show_mouse_pointer(self, gesture):
-		self._setDisplayMode(1)
+		self._setDisplayMode(DISPLAY_MODE_SCREEN_MIRRORING)
 		self._track_mouse = False
 		self._track_nav_obj = False
 		if getLastScriptRepeatCount() == 1:
@@ -984,4 +999,4 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		gesture="kb:NVDA+control+f8",
 	)
 	def script_MultilineBrailleMode(self, gesture) -> None:
-		self._setDisplayMode(0)
+		self._setDisplayMode(DISPLAY_MODE_MULTILINE_BRAILLE)
