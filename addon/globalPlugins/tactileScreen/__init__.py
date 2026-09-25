@@ -889,10 +889,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		rows = self.cur_display_height // 5 # Include a dot for spacing
 		cols = self.cur_display_width // 3 # Include a dot for spacing
 		
-		# To avoid breaking compatibility with other braille displays just put all cells on one row
-		cols = cols * rows
-		rows = 1
-
 		return DisplayDimensions(
 			numRows=rows,
 			numCols= cols,
