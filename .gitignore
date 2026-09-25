@@ -9,5 +9,3 @@ addon/doc/en/
 *.nvda-addon
 .sconsign.dblite
 *.dll
-
-addon/globalPlugins/tactileScreen/SDK/
