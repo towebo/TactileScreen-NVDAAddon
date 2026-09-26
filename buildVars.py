@@ -23,7 +23,7 @@ addon_info = AddonInfo(
 	# Translators: Long description to be shown for this add-on on add-on information from add-on store
 	addon_description=_("""Mirrors the computer screen on a DotPad tactile graphical display. """),
 	# version
-	addon_version="2026.1.dev-26390",
+	addon_version="2026.1.dev-26391",
 	# Brief changelog for this version
 	# Translators: what's new content for the add-on version to be shown in the add-on store
 	addon_changelog=_("""First public version."""),

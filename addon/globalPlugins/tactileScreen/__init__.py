@@ -117,6 +117,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		super().__init__()
 
 		self._bleScanTimer = None
+		# Set Screen Mirroring as default to avoid conflict with other connected braille displays.
+		# When no DotPad is connected you probably won't reflect that the multiline braille display mode wonks up other  displays.
+		self._display_mode = DISPLAY_MODE_SCREEN_MIRRORING
 		config.conf.spec[self._configName] = self._configSpec
 
 		brailleExtensions.pre_writeCells.register(self.onWriteCells)
