@@ -17,12 +17,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@v5
 
     - run: echo -e "pre-commit\nscons\nmarkdown">requirements.txt
 
     - name: Set up Python
-      uses: actions/setup-python@v7
+      uses: actions/setup-python@v6
       with:
         python-version: 3.11
         cache: 'pip'
@@ -40,7 +40,7 @@ jobs:
     - name: building addon
       run: scons && scons pot
 
-    - uses: actions/upload-artifact@v7
+    - uses: actions/upload-artifact@v5
       with:
         name: packaged_addon
         path: |
@@ -54,9 +54,9 @@ jobs:
     permissions:
       contents: write
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@v5
     - name: download releases files
-      uses: actions/download-artifact@v8
+      uses: actions/download-artifact@v6
     - name: Display structure of downloaded files
       run: ls -R
     - name: Calculate sha256
@@ -65,7 +65,7 @@ jobs:
         sha256sum *.nvda-addon >> changelog.md
 
     - name: Release
-      uses: softprops/action-gh-release@v3
+      uses: softprops/action-gh-release@v2
       with:
         files: |
           *.nvda-addon
