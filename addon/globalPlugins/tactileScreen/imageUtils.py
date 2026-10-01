@@ -19,71 +19,122 @@ class StretchMode(IntEnum):
 	WHITEONBLACK = 2
 	HALFTONE = 4
 
-def captureImage(srcX: int, srcY: int, srcWidth: int, srcHeight: int, bufferWidth: int, bufferHeight: int, stretchMode: StretchMode=StretchMode.HALFTONE) -> ctypes.Array:
+class ScreenCapture:
+	"""Reusable GDI screen capture resources for one output size.
+
+	An instance should be created, used, and closed on the same worker thread.
 	"""
-	Captures an image from a part of the screen, resizing to fit the required size, while still maintaining the original aspect ratio.
-	"""
-	# Get a device context for the screen
-	screenDC = user32.GetDC(0)
-	# Create a memory device context and load a new bitmap for drawing on
-	memDC = gdi32.CreateCompatibleDC(screenDC)
-	memBitmap = gdi32.CreateCompatibleBitmap(screenDC, bufferWidth, bufferHeight)
-	gdi32.SelectObject(memDC, memBitmap)
-	# Calculate a rectangle for the destination image that fits within the required bounds
-	# But maintains the source aspect ratio
-	srcAspectRatio = srcWidth / srcHeight
-	bufferAspectRatio = bufferWidth / bufferHeight
-	ratio = max(srcWidth / bufferWidth, srcHeight / bufferHeight)
-	destWidth = int(srcWidth / ratio)
-	destHeight = int(srcHeight / ratio)
-	# Calculate the coordinates within the destination to place the image so that it will be centered
-	destX = int((bufferWidth - destWidth) / 2)
-	destY = int((bufferHeight - destHeight) / 2)
-	# Copy the image at the requested coordinates from the screen into our bitmap
-	# Appropriately resizing and positioning the image, using the requested stretch mode
-	# E.g. keeping black pixels at the expense of white, for a black on white image
-	gdi32.SetStretchBltMode(memDC, stretchMode)
-	gdi32.StretchBlt(
-		memDC,
-		destX,
-		destY,
-		destWidth,
-		destHeight,
-		screenDC,
-		srcX,
-		srcY,
-		srcWidth,
-		srcHeight,
-		SRCCOPY
+
+	def __init__(self, bufferWidth: int, bufferHeight: int):
+		self.bufferWidth = bufferWidth
+		self.bufferHeight = bufferHeight
+		self.screenDC = None
+		self.memDC = None
+		self.memBitmap = None
+		self.oldBitmap = None
+
+		self.screenDC = user32.GetDC(0)
+		if not self.screenDC:
+			raise OSError("Could not get screen device context")
+
+		try:
+			self.memDC = gdi32.CreateCompatibleDC(self.screenDC)
+			if not self.memDC:
+				raise OSError("Could not create memory device context")
+
+			self.memBitmap = gdi32.CreateCompatibleBitmap(
+				self.screenDC,
+				bufferWidth,
+				bufferHeight,
+			)
+			if not self.memBitmap:
+				raise OSError("Could not create capture bitmap")
+
+			self.oldBitmap = gdi32.SelectObject(self.memDC, self.memBitmap)
+
+			self.bitmapInfo = gdiDefs.BITMAPINFO()
+			self.bitmapInfo.bmiHeader.biSize = ctypes.sizeof(
+				self.bitmapInfo.bmiHeader
+			)
+			self.bitmapInfo.bmiHeader.biWidth = bufferWidth
+			self.bitmapInfo.bmiHeader.biHeight = -bufferHeight
+			self.bitmapInfo.bmiHeader.biPlanes = 1
+			self.bitmapInfo.bmiHeader.biBitCount = 32
+			self.bitmapInfo.bmiHeader.biCompression = BI_RGB
+
+			# Allocate the pixel buffer once and reuse it for every frame.
+			self.buffer = (
+				(gdiDefs.RGBQUAD * bufferWidth)
+				* bufferHeight
+			)()
+		except Exception:
+			self.close()
+			raise
+
+	def capture(
+		self,
+		srcX: int,
+		srcY: int,
+		srcWidth: int,
+		srcHeight: int,
+		stretchMode: StretchMode = StretchMode.HALFTONE,
+	):
+		"""Capture and resize a screen rectangle into the reusable pixel buffer."""
+		ratio = max(
+			srcWidth / self.bufferWidth,
+			srcHeight / self.bufferHeight,
 		)
-	# Create a BitmapInfo struct defining the format of the pixels we would like to read from our bitmap.
-	# I.e. Non-encoded RGB.
-	bmInfo = gdiDefs.BITMAPINFO()
-	bmInfo.bmiHeader.biSize = ctypes.sizeof(
-		bmInfo.bmiHeader
-		)
-	bmInfo.bmiHeader.biWidth = bufferWidth
-	bmInfo.bmiHeader.biHeight = bufferHeight * -1
-	bmInfo.bmiHeader.biPlanes = 1
-	bmInfo.bmiHeader.biBitCount = 32
-	bmInfo.bmiHeader.biCompression = BI_RGB
-	# Create a buffer to hold the image for returning.
-	buffer = (
-		(gdiDefs.RGBQUAD * bufferWidth)
-		* bufferHeight
-		)()
-	# Copy the image from the bitmap into the buffer.
-	gdi32.GetDIBits(
-		memDC,
-		memBitmap,
-		0,
-		bufferHeight,
-		buffer,
-		ctypes.byref(bmInfo),
-		DIB_RGB_COLORS,
-		)
-	# Return the buffer, plus the bounds of the image within
-	return buffer, (destX, destY, destWidth, destHeight)
+		destWidth = int(srcWidth / ratio)
+		destHeight = int(srcHeight / ratio)
+		destX = (self.bufferWidth - destWidth) // 2
+		destY = (self.bufferHeight - destHeight) // 2
+
+		gdi32.SetStretchBltMode(self.memDC, stretchMode)
+		if not gdi32.StretchBlt(
+			self.memDC,
+			destX,
+			destY,
+			destWidth,
+			destHeight,
+			self.screenDC,
+			srcX,
+			srcY,
+			srcWidth,
+			srcHeight,
+			SRCCOPY,
+		):
+			raise OSError("StretchBlt failed")
+
+		if not gdi32.GetDIBits(
+			self.memDC,
+			self.memBitmap,
+			0,
+			self.bufferHeight,
+			self.buffer,
+			ctypes.byref(self.bitmapInfo),
+			DIB_RGB_COLORS,
+		):
+			raise OSError("GetDIBits failed")
+
+		return self.buffer, (destX, destY, destWidth, destHeight)
+
+	def close(self) -> None:
+		"""Release all GDI resources owned by this capture object."""
+		if self.memDC and self.oldBitmap:
+			gdi32.SelectObject(self.memDC, self.oldBitmap)
+			self.oldBitmap = None
+
+		if self.memBitmap:
+			gdi32.DeleteObject(self.memBitmap)
+			self.memBitmap = None
+
+		if self.memDC:
+			gdi32.DeleteDC(self.memDC)
+			self.memDC = None
+
+		if self.screenDC:
+			user32.ReleaseDC(0, self.screenDC)
+			self.screenDC = None
 
 
 def findMeanBrightnessThreshold(image: ctypes.Array, x: int, y: int, blur: int=1):

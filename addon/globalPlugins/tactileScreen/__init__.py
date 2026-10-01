@@ -6,6 +6,7 @@
 import math
 import ctypes
 import time
+import threading
 import wx
 import core
 
@@ -54,7 +55,7 @@ import gui
 from gui.settingsDialogs import SettingsDialog
 from gui import guiHelper
 import hwPortUtils
-from .imageUtils import StretchMode, captureImage, getMonochromePixelUsingLocalBrightnessThreshold
+from .imageUtils import ScreenCapture, StretchMode, getMonochromePixelUsingLocalBrightnessThreshold
 from locationHelper import RectLTRB
 import ctypes
 from ctypes import wintypes
@@ -136,7 +137,23 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._device_handle = 0
 		self._connected_device_name = ""
 
+		# Screen mirroring is processed by one persistent worker. A new request
+		# replaces an older request which has not started yet, so refreshes never
+		# build up an obsolete frame queue.
+		self._imageWorkerEvent = threading.Event()
+		self._imageWorkerStop = threading.Event()
+		self._imageRequestLock = threading.Lock()
+		self._pendingImageRequest = None
+		self._imageWorker = None
+
 		self._initialize_dotpad_api()
+		if self._client is not None:
+			self._imageWorker = threading.Thread(
+				target=self._imageWorkerLoop,
+				name="DotPadImageWorker",
+				daemon=True,
+			)
+			self._imageWorker.start()
 
 		self._isTerminating = False
 		self._refreshPending = False
@@ -172,7 +189,16 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 			brailleExtensions.pre_writeCells.unregister(self.onWriteCells)
 			getDisplayDimensionsUnregistered = brailleExtensions.filter_displayDimensions.unregister(self._getDisplayDimensions)
-			
+
+			# Stop the image worker before closing/unloading the DotPad SDK.
+			self._imageWorkerStop.set()
+			self._imageWorkerEvent.set()
+			if self._imageWorker is not None:
+				self._imageWorker.join(timeout=2.0)
+				if self._imageWorker.is_alive():
+					log.warning("DotPad image worker did not stop within timeout")
+				self._imageWorker = None
+
 			client = self._client
 			self._client = None
 
@@ -710,7 +736,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _scheduleRefresh(self):
 		if self._isTerminating or self._refreshPending:
 			return
-
+		
 		self._refreshPending = True
 		core.callLater(
 			self.REFRESH_INTERVAL_MS,
@@ -861,27 +887,117 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 
 	def displayScreenLocation(self, location, isWhiteOnBlack=False):
-		
-		client = self._require_client()
-		if not client:
+		"""Queue the newest screen-mirroring request for the image worker."""
+		client = self._client
+		if client is None or client.disposed or not self._device_handle:
 			return
-		stretchMode = StretchMode.WHITEONBLACK if isWhiteOnBlack else StretchMode.BLACKONWHITE
-		image, (left, top, width, height) = captureImage(location.left, location.top, location.width, location.height, client.hPixelCount, client.vPixelCount, stretchMode=stretchMode)
-		client.resetDataBuffer()
-		for y in range(top, top+height):
-			for x in range(left, left + width):
-				isWhite = getMonochromePixelUsingLocalBrightnessThreshold(image, x, y, blur=3)
-				isRaised = isWhite if isWhiteOnBlack else not isWhite
-				if isRaised:
-					client.setDotInDataBuffer(x, y)
-		self.outputDataBuffer(client)
 
-		text = f"{self.curCenterX:<5d}{self.curCenterY:<5d}{self.curViewPortWidth:<5d}{self.curViewPortHeight:<5d}"
-		client.display_braille_ascii(
+		request = (
+			location.left,
+			location.top,
+			location.width,
+			location.height,
+			isWhiteOnBlack,
 			self._device_handle,
-			text,
-
+			client.hPixelCount,
+			client.vPixelCount,
+			f"{self.curCenterX:<5d}{self.curCenterY:<5d}{self.curViewPortWidth:<5d}{self.curViewPortHeight:<5d}",
 		)
+
+		with self._imageRequestLock:
+			self._pendingImageRequest = request
+
+		self._imageWorkerEvent.set()
+
+	def _imageWorkerLoop(self):
+		"""Capture and process screen images away from NVDA's main thread."""
+		capture = None
+		captureSize = None
+
+		try:
+			while not self._imageWorkerStop.is_set():
+				self._imageWorkerEvent.wait()
+				if self._imageWorkerStop.is_set():
+					break
+
+				self._imageWorkerEvent.clear()
+				with self._imageRequestLock:
+					request = self._pendingImageRequest
+					self._pendingImageRequest = None
+
+				if request is None:
+					continue
+
+				try:
+					(
+						srcX,
+						srcY,
+						srcWidth,
+						srcHeight,
+						isWhiteOnBlack,
+						deviceHandle,
+						bufferWidth,
+						bufferHeight,
+						statusText,
+					) = request
+
+					client = self._client
+					if (
+						client is None
+						or client.disposed
+						or deviceHandle != self._device_handle
+					):
+						continue
+
+					newCaptureSize = (bufferWidth, bufferHeight)
+					if capture is None or captureSize != newCaptureSize:
+						if capture is not None:
+							capture.close()
+						capture = ScreenCapture(bufferWidth, bufferHeight)
+						captureSize = newCaptureSize
+
+					stretchMode = (
+						StretchMode.WHITEONBLACK
+						if isWhiteOnBlack
+						else StretchMode.BLACKONWHITE
+					)
+					image, (left, top, width, height) = capture.capture(
+						srcX,
+						srcY,
+						srcWidth,
+						srcHeight,
+						stretchMode=stretchMode,
+					)
+
+					client.resetDataBuffer()
+					for y in range(top, top + height):
+						for x in range(left, left + width):
+							isWhite = getMonochromePixelUsingLocalBrightnessThreshold(
+							image,
+							x,
+							y,
+							blur=3,
+						)
+							isRaised = isWhite if isWhiteOnBlack else not isWhite
+							if isRaised:
+								client.setDotInDataBuffer(x, y)
+
+					# Re-check the connection after the relatively expensive image work.
+					if (
+						self._imageWorkerStop.is_set()
+						or client is not self._client
+						or client.disposed
+						or deviceHandle != self._device_handle
+					):
+						continue
+
+					client.display_data(deviceHandle, client._data)
+					client.display_braille_ascii(deviceHandle, statusText)
+				except Exception:
+					log.exception("Error processing DotPad screen image")
+		finally:
+			if capture is not None:
+				capture.close()
 
 	# NVDA extentions used in braille handling
 
