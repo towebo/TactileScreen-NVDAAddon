@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: 'tactileScreen' '2026.1.dev-26380'\n"
 "Report-Msgid-Bugs-To: nvda-translations@groups.io\n"
-"POT-Creation-Date: 2026-10-01 10:09+0200\n"
+"POT-Creation-Date: 2026-10-01 13:24+0200\n"
 "PO-Revision-Date: 2026-09-19 12:49+0200\n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -34,7 +34,9 @@ msgstr ""
 #. Brief changelog for this version
 #. Translators: what's new content for the add-on version to be shown in the add-on store
 #: buildVars.py:29
-msgid "First public version."
+msgid ""
+"Moved image processing to a worker thread and optimized the brightness "
+"calculation when generating the monochrome image."
 msgstr ""
 
 #: addon\globalPlugins\tactileScreen\__init__.py:272
