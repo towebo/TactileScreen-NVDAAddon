@@ -26,7 +26,7 @@ addon_info = AddonInfo(
 	addon_version="2026.1.dev-26400",
 	# Brief changelog for this version
 	# Translators: what's new content for the add-on version to be shown in the add-on store
-	addon_changelog=_("""First public version."""),
+	addon_changelog=_("""Moved image processing to a worker thread and optimised optimized the brightness calculation when generating the monochrome image."""),
 	# Author(s)
 	addon_author="Karl-Otto Rosenqvist <karl-otto@mawingu.se>",
 	# URL for the add-on documentation support
