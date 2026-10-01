@@ -68,7 +68,7 @@ class DotPadDeviceDialog(wx.Dialog):
 
         self.status_label = wx.StaticText(
             self,
-            label=_("Scanning for devices…"),
+            label=_("Scanning for devices..."),
         )
         main_sizer.Add(
             self.status_label,
@@ -145,7 +145,7 @@ class DotPadDeviceDialog(wx.Dialog):
             self._client.start_ble_scan()
 
             self._scanning = True
-            self.status_label.SetLabel(_("Scanning for devices…"))
+            self.status_label.SetLabel(_("Scanning for devices..."))
             self.device_list.SetFocus()
 
         except Exception:
@@ -190,10 +190,10 @@ class DotPadDeviceDialog(wx.Dialog):
 
         count = len(self._devices)
         if count == 1:
-            self.status_label.SetLabel(_("1 device found. Scanning…"))
+            self.status_label.SetLabel(_("1 device found. Scanning..."))
         else:
             self.status_label.SetLabel(
-                _("{count} devices found. Scanning…").format(count=count) 
+                _("{count} devices found. Scanning...").format(count=count) 
             )
 
     # ------------------------------------------------------------------
@@ -236,7 +236,7 @@ class DotPadDeviceDialog(wx.Dialog):
         self.cancel_button.Disable()
         self.device_list.Disable()
         self.status_label.SetLabel(
-            _("Connecting to {device_name}…").format(device_name=device_name)
+            _("Connecting to {device_name}...").format(device_name=device_name)
         )
 
         # Stop discovery before starting a connection.
