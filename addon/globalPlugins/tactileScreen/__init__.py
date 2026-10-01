@@ -55,7 +55,7 @@ import gui
 from gui.settingsDialogs import SettingsDialog
 from gui import guiHelper
 import hwPortUtils
-from .imageUtils import ScreenCapture, StretchMode, getMonochromePixelUsingLocalBrightnessThreshold
+from .imageUtils import LocalBrightnessProcessor, ScreenCapture, StretchMode
 from locationHelper import RectLTRB
 import ctypes
 from ctypes import wintypes
@@ -736,7 +736,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _scheduleRefresh(self):
 		if self._isTerminating or self._refreshPending:
 			return
-		
+
 		self._refreshPending = True
 		core.callLater(
 			self.REFRESH_INTERVAL_MS,
@@ -912,6 +912,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _imageWorkerLoop(self):
 		"""Capture and process screen images away from NVDA's main thread."""
 		capture = None
+		brightnessProcessor = None
 		captureSize = None
 
 		try:
@@ -954,6 +955,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 						if capture is not None:
 							capture.close()
 						capture = ScreenCapture(bufferWidth, bufferHeight)
+						brightnessProcessor = LocalBrightnessProcessor(
+							bufferWidth,
+							bufferHeight,
+						)
 						captureSize = newCaptureSize
 
 					stretchMode = (
@@ -969,15 +974,16 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 						stretchMode=stretchMode,
 					)
 
+					brightnessProcessor.update(image)
+
 					client.resetDataBuffer()
 					for y in range(top, top + height):
 						for x in range(left, left + width):
-							isWhite = getMonochromePixelUsingLocalBrightnessThreshold(
-							image,
-							x,
-							y,
-							blur=3,
-						)
+							isWhite = brightnessProcessor.isWhite(
+								x,
+								y,
+								blur=3,
+							)
 							isRaised = isWhite if isWhiteOnBlack else not isWhite
 							if isRaised:
 								client.setDotInDataBuffer(x, y)

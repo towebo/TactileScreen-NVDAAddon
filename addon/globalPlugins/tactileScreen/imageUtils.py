@@ -137,35 +137,69 @@ class ScreenCapture:
 			self.screenDC = None
 
 
-def findMeanBrightnessThreshold(image: ctypes.Array, x: int, y: int, blur: int=1):
-	"""
-	Calculates a suitable brightness threshold at which a pixel could be considered white in a monochrome image, using the mean brightness of the surrounding pixels.
-	"""
-	imageHeight = len(image)
-	imageWidth = len(image[0])
-	surroundingPixels = []
-	left = int(x - blur)
-	right = int(x + blur + 1)
-	top = int(y - blur)
-	bottom = int(y + blur + 1)
-	for i in range(top, bottom):
-		for j in range(left, right):
-			if i < 0 or i >= imageHeight or j < 0 or j >= imageWidth:
-				surroundingPixels.append(0)
-			else:
-				surroundingPixels.append(rgbPixelBrightness(image[i][j]))
-	threshold = sum(surroundingPixels) / len(surroundingPixels)
-	return threshold
 
+class LocalBrightnessProcessor:
+	"""Reusable brightness and integral-image buffers for local thresholding."""
 
-def rgbPixelBrightness(p):
-	"""Converts a RGBQUAD pixel in to  one grey-scale brightness value."""
-	return int((0.3*p.rgbBlue)+(0.59*p.rgbGreen)+(0.11*p.rgbRed))
+	def __init__(self, width: int, height: int):
+		self.width = width
+		self.height = height
+		self.brightness = [0] * (width * height)
+		# One extra row and column simplify summed-area lookups.
+		self.integralStride = width + 1
+		self.integral = [0] * ((width + 1) * (height + 1))
 
-def getMonochromePixelUsingLocalBrightnessThreshold(image, x, y, blur=4):
-	"""
-	Fetches a monochrome pixel from an RGB image, using the local mean brightness to calculate a suitable brightness threshold.
-	"""
-	threshold = findMeanBrightnessThreshold(image, x, y, blur)
-	px = rgbPixelBrightness(image[y][x])
-	return px >= threshold
+	def update(self, image) -> None:
+		"""Convert RGB pixels to brightness and rebuild the summed-area table."""
+		width = self.width
+		stride = self.integralStride
+		brightness = self.brightness
+		integral = self.integral
+
+		# The first integral row is always zero. The first entry of each
+		# following row is also reset below.
+		for x in range(stride):
+			integral[x] = 0
+
+		for y in range(self.height):
+			rowSum = 0
+			brightnessOffset = y * width
+			integralRow = (y + 1) * stride
+			previousIntegralRow = y * stride
+			integral[integralRow] = 0
+
+			for x in range(width):
+				pixel = image[y][x]
+				value = int(
+					(0.3 * pixel.rgbBlue)
+					+ (0.59 * pixel.rgbGreen)
+					+ (0.11 * pixel.rgbRed)
+				)
+				brightness[brightnessOffset + x] = value
+				rowSum += value
+				integral[integralRow + x + 1] = (
+					integral[previousIntegralRow + x + 1]
+					+ rowSum
+				)
+
+	def isWhite(self, x: int, y: int, blur: int = 4) -> bool:
+		"""Apply the original local-mean threshold using constant-time area sums."""
+		left = max(0, x - blur)
+		right = min(self.width, x + blur + 1)
+		top = max(0, y - blur)
+		bottom = min(self.height, y + blur + 1)
+
+		stride = self.integralStride
+		integral = self.integral
+		regionSum = (
+			integral[bottom * stride + right]
+			- integral[top * stride + right]
+			- integral[bottom * stride + left]
+			+ integral[top * stride + left]
+		)
+
+		# Preserve the old edge behavior: samples outside the image count as
+		# black (zero), so always divide by the complete kernel area.
+		kernelWidth = (blur * 2) + 1
+		threshold = regionSum / (kernelWidth * kernelWidth)
+		return self.brightness[y * self.width + x] >= threshold
